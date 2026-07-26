@@ -113,7 +113,7 @@ Add inside the existing `<dependencies>` block in `pom.xml`, after the `paper-ap
         <dependency>
             <groupId>com.github.seeseemelk</groupId>
             <artifactId>MockBukkit-v1.21</artifactId>
-            <version>3.107.1</version>
+            <version>3.133.2</version>
             <scope>test</scope>
         </dependency>
 ```
