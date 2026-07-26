@@ -20,9 +20,17 @@ the same handful of concerns are reimplemented per-plugin, each with small incom
 - **Location (de)serialization** — a `LocationUtil` duplicated in BuildArena and VoidColosseum,
   using two different, incompatible string formats.
 
-StoneLib already exists in this GitHub directory as an empty PaperMC library skeleton
-(`org.modularsoft:StoneLib`, published via JitPack, referenced from the `zander` project's README)
-— it is the intended home for this shared code but currently contains no source.
+StoneLib already exists in this GitHub directory as a PaperMC library
+(currently `org.modularsoft:StoneLib`, published via JitPack, referenced from the `zander`
+project's README) — it is the intended home for this shared code. It currently contains three
+unrelated utility classes under package `org.modularsoft.StoneLib`: `ConfigValidator` (typed field
+validation with fallback for `FileConfiguration`), `CopyResources` (mirrors a bundled default
+resource file into the plugin data folder, filling in missing keys via `setDefaults`), and
+`ItemBuilder` (fluent `ItemStack` builder). As part of this work, both the Maven `groupId` and the
+package root move to `dev.anchorlight.StoneLib` (capital S/L) to match the naming convention used
+by current plugins — BuildArena, Blueprint, MineMail, EdenEffects, etc. all use `dev.anchorlight.*`
+— while `org.modularsoft` is legacy. The three existing classes move with it unchanged in behavior,
+and the new modules are added alongside them under the new package root.
 
 ## Goals
 
@@ -40,8 +48,9 @@ documented library that new and existing plugins depend on instead of reimplemen
 
 ## Architecture
 
-StoneLib remains a single Maven artifact (as already scaffolded), organized into five independent
-packages under `org.modularsoft.stonelib`. Consuming plugins construct the services they need in
+StoneLib remains a single Maven artifact (as already scaffolded), moved to the `dev.anchorlight`
+groupId/package root and organized into five independent sub-packages there, alongside the moved
+`ConfigValidator`, `CopyResources`, and `ItemBuilder` classes. Consuming plugins construct the services they need in
 `onEnable`, passing their own `JavaPlugin` instance — matching the existing
 `new ConfigManager(plugin)` call-site pattern already used everywhere, so migrating a plugin is
 largely: add the StoneLib dependency, swap the import, delete the duplicated class, adjust
@@ -49,7 +58,7 @@ call-sites where the API name differs.
 
 ## Components
 
-### `org.modularsoft.stonelib.command`
+### `dev.anchorlight.StoneLib.command`
 
 - `SubCommand` interface: `getName()` (required), `getPermission()`, `getUsage()`, `getDescription()`
   as defaults, `execute(CommandSender, String[])` (required), `tabComplete(CommandSender, String[])`
@@ -59,7 +68,7 @@ call-sites where the API name differs.
   Plugins implement Bukkit's `CommandExecutor`/`TabCompleter` by delegating to a `CommandRouter`
   instance rather than hand-rolling dispatch.
 
-### `org.modularsoft.stonelib.message`
+### `dev.anchorlight.StoneLib.message`
 
 - `MessageService(JavaPlugin plugin, String fileName)`: loads a `messages.yml`-style file (or a
   caller-specified filename), copies the bundled default from `src/main/resources` on first run
@@ -73,16 +82,18 @@ call-sites where the API name differs.
 - `LegacyColorConverter` utility to convert existing `&`-coded message files to MiniMessage input,
   so plugins with old message YAMLs keep working without hand-editing every string.
 
-### `org.modularsoft.stonelib.config`
+### `dev.anchorlight.StoneLib.config`
 
 - `ConfigManager` base helper wrapping `plugin.getConfig()`: `reload()`, typed getter passthroughs
   (`getInt`, `getBoolean`, `getString`, etc., matching `FileConfiguration`'s surface so existing
   per-plugin subclasses need minimal changes to their own typed accessor methods).
-- `ConfigUpdater.addMissingKeys(JavaPlugin, Logger)` (lifted from Ascendra): diffs the bundled
-  default `config.yml` resource against the on-disk config and appends any missing top-level keys
-  without overwriting existing user values, logging what was added.
+- The "add missing keys on upgrade" need (seen hand-rolled in Ascendra as `ConfigUpdater`) is
+  already solved by the existing `CopyResources.mirror(plugin, filepath)` utility, which loads the
+  bundled default alongside the on-disk file and calls `setDefaults` + `copyDefaults(true)` before
+  saving — no new class needed here. `ConfigManager.reload()` calls `CopyResources.mirror(plugin,
+  "config.yml")` before re-reading, so every consumer gets the merge behavior for free.
 
-### `org.modularsoft.stonelib.storage`
+### `dev.anchorlight.StoneLib.storage`
 
 - `Repository<K, V>` interface: `load()`, `save()`, `get(K)`, `put(K, V)`, `remove(K)`, `all()`,
   each plugin supplies (de)serialization via a small `RecordCodec<V>` functional interface
@@ -97,7 +108,7 @@ call-sites where the API name differs.
   includes yaw/pitch, versus VoidColosseum's comma-joined block-coordinate-only format), replacing
   both duplicated `LocationUtil` classes.
 
-### `org.modularsoft.stonelib.hologram`
+### `dev.anchorlight.StoneLib.hologram`
 
 - `HologramService(JavaPlugin plugin)`: creates/updates/removes floating text using native Paper
   `TextDisplay` entities (Gracewave's approach) tagged with a `NamespacedKey` so managed entities
