@@ -1,4 +1,4 @@
-package org.modularsoft.StoneLib;
+package dev.anchorlight.StoneLib;
 
 import java.io.File;
 import java.io.IOException;
