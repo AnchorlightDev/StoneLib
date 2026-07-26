@@ -13,6 +13,7 @@ import java.io.IOException;
 import java.io.PrintWriter;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MessageServiceTest {
 
@@ -55,7 +56,11 @@ class MessageServiceTest {
         // Note: PlayerMock fails due to registry initialization in this Paper 1.21.3 environment.
         // Using ConsoleCommandSender as a workaround (verified to work in Task 3).
         // The send() method accepts CommandSender, so this is a valid test.
-        service.send(server.getConsoleSender(), "greeting", "Alex");
-        // Test passes if no exception is thrown and message is properly formatted and sent.
+        var sender = server.getConsoleSender();
+        service.send(sender, "greeting", "Alex");
+
+        // Verify the message was properly formatted with placeholder substitution
+        String plain = PlainTextComponentSerializer.plainText().serialize(service.get("greeting", "Alex"));
+        assertTrue(plain.contains("Hello, Alex!"));
     }
 }
