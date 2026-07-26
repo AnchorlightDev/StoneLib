@@ -54,13 +54,14 @@ class MessageServiceTest {
     @Test
     void sendDeliversMessage() {
         // Note: PlayerMock fails due to registry initialization in this Paper 1.21.3 environment.
-        // Using ConsoleCommandSender as a workaround (verified to work in Task 3).
-        // The send() method accepts CommandSender, so this is a valid test.
+        // Using ConsoleCommandSenderMock as a workaround (verified to work in Task 3).
         var sender = server.getConsoleSender();
         service.send(sender, "greeting", "Alex");
 
-        // Verify the message was properly formatted with placeholder substitution
-        String plain = PlainTextComponentSerializer.plainText().serialize(service.get("greeting", "Alex"));
-        assertTrue(plain.contains("Hello, Alex!"));
+        // Verify message was actually delivered to the sender by reading what it received
+        // ConsoleCommandSenderMock (like PlayerMock) supports nextMessage() to retrieve sent messages
+        var consoleSender = (be.seeseemelk.mockbukkit.command.ConsoleCommandSenderMock) sender;
+        String received = consoleSender.nextMessage();
+        assertTrue(received.contains("Hello, Alex!"));
     }
 }
