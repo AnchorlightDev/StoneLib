@@ -127,6 +127,23 @@ public class SqliteRepository<K, V> implements Repository<K, V> {
         try (Statement statement = conn.createStatement()) {
             statement.execute(ddl.toString());
         }
+
+        if (sampleRow != null && !sampleRow.isEmpty()) {
+            java.util.Set<String> existingColumns = new java.util.HashSet<>();
+            try (Statement statement = conn.createStatement();
+                 ResultSet rs = statement.executeQuery("PRAGMA table_info(" + tableName + ")")) {
+                while (rs.next()) {
+                    existingColumns.add(rs.getString("name").toLowerCase(java.util.Locale.ROOT));
+                }
+            }
+            for (String column : sampleRow.keySet()) {
+                if (!existingColumns.contains(column.toLowerCase(java.util.Locale.ROOT))) {
+                    try (Statement alter = conn.createStatement()) {
+                        alter.execute("ALTER TABLE " + tableName + " ADD COLUMN " + column + " TEXT");
+                    }
+                }
+            }
+        }
     }
 
     @Override
