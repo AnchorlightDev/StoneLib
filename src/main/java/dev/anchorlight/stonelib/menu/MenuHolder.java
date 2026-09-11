@@ -1,4 +1,4 @@
-package dev.anchorlight.StoneLib.menu;
+package dev.anchorlight.stonelib.menu;
 
 import net.kyori.adventure.text.Component;
 import org.bukkit.entity.Player;

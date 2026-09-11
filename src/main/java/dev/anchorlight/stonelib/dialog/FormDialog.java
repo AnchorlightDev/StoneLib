@@ -1,4 +1,4 @@
-package dev.anchorlight.StoneLib.dialog;
+package dev.anchorlight.stonelib.dialog;
 
 import io.papermc.paper.dialog.Dialog;
 import io.papermc.paper.registry.data.dialog.ActionButton;

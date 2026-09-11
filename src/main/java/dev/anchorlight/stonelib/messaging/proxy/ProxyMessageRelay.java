@@ -1,4 +1,4 @@
-package dev.anchorlight.StoneLib.messaging.proxy;
+package dev.anchorlight.stonelib.messaging.proxy;
 
 import com.velocitypowered.api.event.Subscribe;
 import com.velocitypowered.api.event.connection.PluginMessageEvent;

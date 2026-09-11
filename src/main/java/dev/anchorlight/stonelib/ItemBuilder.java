@@ -1,4 +1,4 @@
-package dev.anchorlight.StoneLib;
+package dev.anchorlight.stonelib;
 
 import java.util.Arrays;
 import net.kyori.adventure.text.Component;

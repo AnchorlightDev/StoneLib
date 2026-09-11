@@ -1,4 +1,4 @@
-package dev.anchorlight.StoneLib.config;
+package dev.anchorlight.stonelib.config;
 
 import org.mockbukkit.mockbukkit.MockBukkit;
 import org.junit.jupiter.api.AfterEach;

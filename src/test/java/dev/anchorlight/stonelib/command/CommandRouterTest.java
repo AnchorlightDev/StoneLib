@@ -1,4 +1,4 @@
-package dev.anchorlight.StoneLib.command;
+package dev.anchorlight.stonelib.command;
 
 import org.mockbukkit.mockbukkit.MockBukkit;
 import org.mockbukkit.mockbukkit.ServerMock;

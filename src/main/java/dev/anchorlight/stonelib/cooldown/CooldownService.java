@@ -1,4 +1,4 @@
-package dev.anchorlight.StoneLib.cooldown;
+package dev.anchorlight.stonelib.cooldown;
 
 import org.bukkit.entity.Player;
 

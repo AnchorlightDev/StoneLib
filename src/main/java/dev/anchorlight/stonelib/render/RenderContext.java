@@ -1,4 +1,4 @@
-package dev.anchorlight.StoneLib.render;
+package dev.anchorlight.stonelib.render;
 
 import org.bukkit.Location;
 import org.bukkit.entity.Player;

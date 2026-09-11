@@ -1,4 +1,4 @@
-package dev.anchorlight.StoneLib.storage.sql;
+package dev.anchorlight.stonelib.storage.sql;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;

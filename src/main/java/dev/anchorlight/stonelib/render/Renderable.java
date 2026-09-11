@@ -1,4 +1,4 @@
-package dev.anchorlight.StoneLib.render;
+package dev.anchorlight.stonelib.render;
 
 import java.util.UUID;
 

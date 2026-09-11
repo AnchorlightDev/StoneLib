@@ -1,4 +1,4 @@
-package dev.anchorlight.StoneLib.config;
+package dev.anchorlight.stonelib.config;
 
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;

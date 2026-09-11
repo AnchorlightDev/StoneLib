@@ -1,4 +1,4 @@
-package dev.anchorlight.StoneLib.permission;
+package dev.anchorlight.stonelib.permission;
 
 import org.bukkit.entity.Player;
 

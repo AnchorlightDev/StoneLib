@@ -1,4 +1,4 @@
-package dev.anchorlight.StoneLib.message;
+package dev.anchorlight.stonelib.message;
 
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;

@@ -1,4 +1,4 @@
-package dev.anchorlight.StoneLib.storage;
+package dev.anchorlight.stonelib.storage;
 
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;

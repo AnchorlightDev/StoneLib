@@ -1,4 +1,4 @@
-package dev.anchorlight.StoneLib.hologram;
+package dev.anchorlight.stonelib.hologram;
 
 import net.kyori.adventure.text.Component;
 import org.bukkit.Location;

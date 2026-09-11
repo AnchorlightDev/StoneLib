@@ -1,6 +1,6 @@
-package dev.anchorlight.StoneLib.message;
+package dev.anchorlight.stonelib.message;
 
-import dev.anchorlight.StoneLib.config.ConfigUpdater;
+import dev.anchorlight.stonelib.config.ConfigUpdater;
 import net.kyori.adventure.audience.Audience;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;

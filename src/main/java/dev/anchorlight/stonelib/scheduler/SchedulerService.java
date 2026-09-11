@@ -1,4 +1,4 @@
-package dev.anchorlight.StoneLib.scheduler;
+package dev.anchorlight.stonelib.scheduler;
 
 import org.bukkit.plugin.Plugin;
 import org.bukkit.scheduler.BukkitTask;

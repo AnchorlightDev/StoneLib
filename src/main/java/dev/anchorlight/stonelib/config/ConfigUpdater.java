@@ -1,4 +1,4 @@
-package dev.anchorlight.StoneLib.config;
+package dev.anchorlight.stonelib.config;
 
 import dev.dejvokep.boostedyaml.YamlDocument;
 import dev.dejvokep.boostedyaml.dvs.versioning.BasicVersioning;

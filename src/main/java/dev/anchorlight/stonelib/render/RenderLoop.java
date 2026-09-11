@@ -1,6 +1,6 @@
-package dev.anchorlight.StoneLib.render;
+package dev.anchorlight.stonelib.render;
 
-import dev.anchorlight.StoneLib.scheduler.SchedulerService;
+import dev.anchorlight.stonelib.scheduler.SchedulerService;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.entity.Player;

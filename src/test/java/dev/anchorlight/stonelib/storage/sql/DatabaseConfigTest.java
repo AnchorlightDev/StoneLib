@@ -1,4 +1,4 @@
-package dev.anchorlight.StoneLib.storage.sql;
+package dev.anchorlight.stonelib.storage.sql;
 
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.junit.jupiter.api.Test;

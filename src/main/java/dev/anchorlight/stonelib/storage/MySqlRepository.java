@@ -1,6 +1,6 @@
-package dev.anchorlight.StoneLib.storage;
+package dev.anchorlight.stonelib.storage;
 
-import dev.anchorlight.StoneLib.storage.sql.ConnectionPool;
+import dev.anchorlight.stonelib.storage.sql.ConnectionPool;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -71,7 +71,7 @@ public class MySqlRepository<K, V> implements Repository<K, V> {
      *
      * <p>This covers additive changes only. Anything else — renaming a column, changing a type,
      * backfilling — belongs in a
-     * {@link dev.anchorlight.StoneLib.storage.sql.SchemaMigrator} migration.</p>
+     * {@link dev.anchorlight.stonelib.storage.sql.SchemaMigrator} migration.</p>
      */
     public void createTable() throws SQLException {
         StringBuilder ddl = new StringBuilder("CREATE TABLE IF NOT EXISTS " + tableName

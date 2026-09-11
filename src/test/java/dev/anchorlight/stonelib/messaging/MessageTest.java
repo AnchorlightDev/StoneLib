@@ -1,4 +1,4 @@
-package dev.anchorlight.StoneLib.messaging;
+package dev.anchorlight.stonelib.messaging;
 
 import org.junit.jupiter.api.Test;
 

@@ -1,4 +1,4 @@
-package dev.anchorlight.StoneLib.storage.sql;
+package dev.anchorlight.stonelib.storage.sql;
 
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;

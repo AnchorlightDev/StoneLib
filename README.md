@@ -27,21 +27,21 @@ pom.xml +
 
 ## Modules
 
-- `dev.anchorlight.StoneLib.command` — `SubCommand` + `CommandRouter` for sub-command dispatch.
-- `dev.anchorlight.StoneLib.message` — `MessageService` (MiniMessage-based messages.yml, with both positional `{0}` and named `<key>` placeholders — see below) + `MiniMessages` (named-placeholder parsing on its own) + `LegacyColorConverter` + `UntrustedText` (sanitizes untrusted values — chat input, external API data — before they reach a MiniMessage template).
-- `dev.anchorlight.StoneLib.config` — `ConfigUpdater` (versioned config migration, see below), plus `ConfigManager` (single `config.yml`) and `MultiConfigManager` (several YAML files at once, for plugins with a lot of tunable surface). Both update through `ConfigUpdater` on reload.
-- `dev.anchorlight.StoneLib.loot` — `LootTable`, weighted loot built from a config list (`material`/`min`/`max`/`weight`/`enchantments`) for crates, drops and rewards.
-- `dev.anchorlight.StoneLib.storage` — `Repository`/`RecordCodec` with `YamlRepository` and `SqliteRepository` implementations, plus `LocationCodec`.
-- `dev.anchorlight.StoneLib.scheduler` — `SchedulerService`, a Bukkit scheduler wrapper that tracks every task it creates so `cancelAll()` in `onDisable` cleans them all up; `supplyAsync` runs work off-thread and returns the result on the main thread.
-- `dev.anchorlight.StoneLib.cooldown` — `CooldownService`, in-memory `UUID -> key -> expiry` cooldowns with an optional bypass permission and a check-and-apply `tryUse`.
-- `dev.anchorlight.StoneLib.menu` — `MenuHolder` + `MenuListener`, a typed `InventoryHolder` for plugin menus. Register the listener once and every menu is read-only and routed to its own click handler.
-- `dev.anchorlight.StoneLib.time` — `Durations`, player-facing duration formatting in three deliberately distinct shapes (`clock`, `human`, `compact`).
-- `dev.anchorlight.StoneLib.hologram` — `HologramService` using native Paper `TextDisplay` entities (no external plugin dependency).
-- `dev.anchorlight.StoneLib.dialog` — `FormDialog`, a builder over Paper's Dialog API for text fields, sliders, toggles and dropdowns, plus `FormResponse`, which clamps and defaults rather than trusting what the client sent.
-- `dev.anchorlight.StoneLib.storage.sql` — `DatabaseConfig`, `ConnectionPool` (HikariCP) and `SchemaMigrator` (ordered, once-only migrations), with `storage.MySqlRepository` implementing the usual `Repository` contract on MySQL.
-- `dev.anchorlight.StoneLib.messaging` — `MessageBus` + `Message`, a cross-server message bus over plugin messaging, and `messaging.proxy.ProxyMessageRelay`, the Velocity side that fans a message out to the other backends.
-- `dev.anchorlight.StoneLib.render` — `RenderLoop`, one async loop drawing every registered `Renderable` with distance culling, instead of a task per player.
-- `dev.anchorlight.StoneLib.permission` — `PermissionService`, LuckPerms lookups with a join-time cache and self-expiring temporary grants.
+- `dev.anchorlight.stonelib.command` — `SubCommand` + `CommandRouter` for sub-command dispatch.
+- `dev.anchorlight.stonelib.message` — `MessageService` (MiniMessage-based messages.yml, with both positional `{0}` and named `<key>` placeholders — see below) + `MiniMessages` (named-placeholder parsing on its own) + `LegacyColorConverter` + `UntrustedText` (sanitizes untrusted values — chat input, external API data — before they reach a MiniMessage template).
+- `dev.anchorlight.stonelib.config` — `ConfigUpdater` (versioned config migration, see below), plus `ConfigManager` (single `config.yml`) and `MultiConfigManager` (several YAML files at once, for plugins with a lot of tunable surface). Both update through `ConfigUpdater` on reload.
+- `dev.anchorlight.stonelib.loot` — `LootTable`, weighted loot built from a config list (`material`/`min`/`max`/`weight`/`enchantments`) for crates, drops and rewards.
+- `dev.anchorlight.stonelib.storage` — `Repository`/`RecordCodec` with `YamlRepository` and `SqliteRepository` implementations, plus `LocationCodec`.
+- `dev.anchorlight.stonelib.scheduler` — `SchedulerService`, a Bukkit scheduler wrapper that tracks every task it creates so `cancelAll()` in `onDisable` cleans them all up; `supplyAsync` runs work off-thread and returns the result on the main thread.
+- `dev.anchorlight.stonelib.cooldown` — `CooldownService`, in-memory `UUID -> key -> expiry` cooldowns with an optional bypass permission and a check-and-apply `tryUse`.
+- `dev.anchorlight.stonelib.menu` — `MenuHolder` + `MenuListener`, a typed `InventoryHolder` for plugin menus. Register the listener once and every menu is read-only and routed to its own click handler.
+- `dev.anchorlight.stonelib.time` — `Durations`, player-facing duration formatting in three deliberately distinct shapes (`clock`, `human`, `compact`).
+- `dev.anchorlight.stonelib.hologram` — `HologramService` using native Paper `TextDisplay` entities (no external plugin dependency).
+- `dev.anchorlight.stonelib.dialog` — `FormDialog`, a builder over Paper's Dialog API for text fields, sliders, toggles and dropdowns, plus `FormResponse`, which clamps and defaults rather than trusting what the client sent.
+- `dev.anchorlight.stonelib.storage.sql` — `DatabaseConfig`, `ConnectionPool` (HikariCP) and `SchemaMigrator` (ordered, once-only migrations), with `storage.MySqlRepository` implementing the usual `Repository` contract on MySQL.
+- `dev.anchorlight.stonelib.messaging` — `MessageBus` + `Message`, a cross-server message bus over plugin messaging, and `messaging.proxy.ProxyMessageRelay`, the Velocity side that fans a message out to the other backends.
+- `dev.anchorlight.stonelib.render` — `RenderLoop`, one async loop drawing every registered `Renderable` with distance culling, instead of a task per player.
+- `dev.anchorlight.stonelib.permission` — `PermissionService`, LuckPerms lookups with a join-time cache and self-expiring temporary grants.
 
 ## Build requirements
 
@@ -175,7 +175,7 @@ anything not authored by your own plugin) instead of going through `MessageServi
 first with `UntrustedText.forDisplay(raw, maxLength)`:
 
 ```java
-import dev.anchorlight.StoneLib.message.UntrustedText;
+import dev.anchorlight.stonelib.message.UntrustedText;
 
 String safeName = UntrustedText.forDisplay(externalApiResponse.displayName(), 40);
 Component msg = MiniMessage.miniMessage().deserialize("<yellow>" + safeName + " joined!");
@@ -197,11 +197,11 @@ data from it, holograms last since they're usually populated from loaded data.
 ```java
 package dev.anchorlight.example;
 
-import dev.anchorlight.StoneLib.command.CommandRouter;
-import dev.anchorlight.StoneLib.config.ConfigManager;
-import dev.anchorlight.StoneLib.hologram.HologramService;
-import dev.anchorlight.StoneLib.message.MessageService;
-import dev.anchorlight.StoneLib.storage.YamlRepository;
+import dev.anchorlight.stonelib.command.CommandRouter;
+import dev.anchorlight.stonelib.config.ConfigManager;
+import dev.anchorlight.stonelib.hologram.HologramService;
+import dev.anchorlight.stonelib.message.MessageService;
+import dev.anchorlight.stonelib.storage.YamlRepository;
 import org.bukkit.plugin.java.JavaPlugin;
 
 public class ExamplePlugin extends JavaPlugin {

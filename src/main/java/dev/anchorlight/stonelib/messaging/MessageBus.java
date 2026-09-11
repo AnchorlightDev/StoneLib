@@ -1,4 +1,4 @@
-package dev.anchorlight.StoneLib.messaging;
+package dev.anchorlight.stonelib.messaging;
 
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;

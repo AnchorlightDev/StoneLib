@@ -1,4 +1,4 @@
-package dev.anchorlight.StoneLib.messaging;
+package dev.anchorlight.stonelib.messaging;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;

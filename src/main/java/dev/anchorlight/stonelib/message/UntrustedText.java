@@ -1,4 +1,4 @@
-package dev.anchorlight.StoneLib.message;
+package dev.anchorlight.stonelib.message;
 
 /**
  * Turns untrusted text (player-typed input, chat messages, data pulled from an external API,

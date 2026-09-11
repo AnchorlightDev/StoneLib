@@ -1,4 +1,4 @@
-package dev.anchorlight.StoneLib.loot;
+package dev.anchorlight.stonelib.loot;
 
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;

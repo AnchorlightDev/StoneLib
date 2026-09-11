@@ -1,6 +1,6 @@
-package dev.anchorlight.StoneLib;
+package dev.anchorlight.stonelib;
 
-import dev.anchorlight.StoneLib.config.ConfigUpdater;
+import dev.anchorlight.stonelib.config.ConfigUpdater;
 import org.bukkit.plugin.java.JavaPlugin;
 
 /**

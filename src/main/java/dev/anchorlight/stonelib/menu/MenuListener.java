@@ -1,4 +1,4 @@
-package dev.anchorlight.StoneLib.menu;
+package dev.anchorlight.stonelib.menu;
 
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;

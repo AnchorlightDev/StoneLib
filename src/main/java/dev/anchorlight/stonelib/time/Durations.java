@@ -1,4 +1,4 @@
-package dev.anchorlight.StoneLib.time;
+package dev.anchorlight.stonelib.time;
 
 import java.time.Duration;
 

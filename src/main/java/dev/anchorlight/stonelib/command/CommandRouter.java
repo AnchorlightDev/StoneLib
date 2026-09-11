@@ -1,4 +1,4 @@
-package dev.anchorlight.StoneLib.command;
+package dev.anchorlight.stonelib.command;
 
 import org.bukkit.ChatColor;
 import org.bukkit.command.CommandSender;

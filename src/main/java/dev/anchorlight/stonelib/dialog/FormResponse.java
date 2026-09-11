@@ -1,4 +1,4 @@
-package dev.anchorlight.StoneLib.dialog;
+package dev.anchorlight.stonelib.dialog;
 
 import io.papermc.paper.dialog.DialogResponseView;
 import org.bukkit.entity.Player;
@@ -30,7 +30,7 @@ public final class FormResponse {
      * A text field's value, or {@code fallback} if it is missing or blank.
      *
      * <p>This is raw player input. Run it through
-     * {@link dev.anchorlight.StoneLib.message.UntrustedText} before it reaches a MiniMessage
+     * {@link dev.anchorlight.stonelib.message.UntrustedText} before it reaches a MiniMessage
      * template or a display name.</p>
      */
     public String text(String key, String fallback) {
