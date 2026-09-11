@@ -2,11 +2,12 @@ package dev.anchorlight.StoneLib.config;
 
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
-import dev.anchorlight.StoneLib.CopyResources;
+
 
 /**
- * Wraps a plugin's config.yml, merging any new default keys from the bundled
- * resource on every reload via {@link CopyResources#mirror}.
+ * Wraps a plugin's config.yml, bringing it up to date with the bundled resource on every reload
+ * via {@link ConfigUpdater} - merging new keys, and applying versioned relocations when the
+ * resource declares a {@code config-version}.
  */
 public class ConfigManager {
 
@@ -18,7 +19,7 @@ public class ConfigManager {
     }
 
     public void reload() {
-        CopyResources.mirror(plugin, "config.yml");
+        ConfigUpdater.update(plugin, "config.yml");
         plugin.reloadConfig();
     }
 

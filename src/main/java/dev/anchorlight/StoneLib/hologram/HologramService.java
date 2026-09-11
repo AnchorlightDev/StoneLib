@@ -3,6 +3,7 @@ package dev.anchorlight.StoneLib.hologram;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Location;
 import org.bukkit.NamespacedKey;
+import org.bukkit.entity.Display;
 import org.bukkit.entity.TextDisplay;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -32,6 +33,7 @@ public class HologramService {
         try {
             location.getWorld().spawn(location, TextDisplay.class, entity -> {
                 entity.getPersistentDataContainer().set(idKey, PersistentDataType.STRING, id.toString());
+                entity.setBillboard(Display.Billboard.CENTER);
                 applyLines(entity, lines);
             });
         } catch (Exception e) {

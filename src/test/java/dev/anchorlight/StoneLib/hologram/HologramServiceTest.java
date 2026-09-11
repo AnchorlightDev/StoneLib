@@ -53,6 +53,9 @@ class HologramServiceTest {
 
         plugin = mock(JavaPlugin.class);
         when(plugin.getName()).thenReturn("stonelib");
+        // Paper now builds a NamespacedKey from Plugin.namespace() rather than getName(); an
+        // unstubbed mock returns null and the key constructor rejects it.
+        when(plugin.namespace()).thenReturn("stonelib");
         when(plugin.getLogger()).thenReturn(Logger.getLogger("StoneLibTest"));
 
         world = mock(World.class);
