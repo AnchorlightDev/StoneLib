@@ -29,6 +29,9 @@
   - [Versioned config migration](#versioned-config-migration)
   - [MySQL storage](#mysql-storage)
   - [Cross-server messaging](#cross-server-messaging)
+  - [Request/response over plugin messaging](#requestresponse-over-plugin-messaging)
+  - [Regions](#regions)
+  - [Migrating from ModularEnigma Requests](#migrating-from-modularenigma-requests)
 - [Migrating from 1.x](#migrating-from-1x)
 - [Building from source](#building-from-source)
 
@@ -61,7 +64,7 @@ repository and dependency to your `pom.xml`:
     <dependency>
         <groupId>com.github.AnchorlightDev</groupId>
         <artifactId>StoneLib</artifactId>
-        <version>2.0.0</version>
+        <version>2.1.0</version>
     </dependency>
 </dependencies>
 ```
@@ -123,14 +126,20 @@ All packages live under `dev.anchorlight.stonelib`.
 | `storage` | The `Repository` / `RecordCodec` contract with `YamlRepository`, `SqliteRepository` and `MySqlRepository` implementations, plus `LocationCodec`. |
 | `storage.sql` | `DatabaseConfig`, `ConnectionPool` (HikariCP) and `SchemaMigrator` for ordered, run-once migrations. |
 | `scheduler` | `SchedulerService`, a Bukkit scheduler wrapper that tracks its tasks so `cancelAll()` cleans up in `onDisable`. `supplyAsync` runs work off-thread and hands the result back on the main thread. |
-| `cooldown` | `CooldownService`, in-memory per-player cooldowns with an optional bypass permission and a check-and-apply `tryUse`. |
-| `menu` | `MenuHolder` and `MenuListener`, a typed `InventoryHolder` where every menu is read-only and routed to its own click handler. |
+| `cooldown` | `CooldownService`, in-memory per-player cooldowns with an optional bypass permission and a check-and-apply `tryUse`. `RateLimiter` is a Bukkit-free per-key minimum interval for guarding inbound requests. |
+| `menu` | `MenuHolder` and `MenuListener`, a typed `InventoryHolder` where every menu is read-only and routed to its own click handler. `SlotLayout` places entries at pinned slots and centres the rest. |
 | `dialog` | `FormDialog`, a builder over Paper's Dialog API (text fields, sliders, toggles, dropdowns), and `FormResponse`, which clamps and defaults instead of trusting the client. |
 | `hologram` | `HologramService`, holograms on native Paper `TextDisplay` entities with no plugin dependency. |
 | `render` | `RenderLoop`, one async loop drawing every registered `Renderable` with distance culling, instead of a task per player. |
 | `loot` | `LootTable`, weighted loot read from config (`material` / `min` / `max` / `weight` / `enchantments`) for crates, drops and rewards. |
 | `permission` | `PermissionService`, LuckPerms lookups with a join-time cache and self-expiring temporary grants. |
 | `messaging` | `MessageBus` and `Message`, a cross-server bus over plugin messaging. `messaging.proxy.ProxyMessageRelay` is the Velocity side. |
+| `messaging.request` | `PendingRequests`, request/response correlation with timeouts for one-way transports such as plugin messages. No Bukkit types, so it works on a proxy too. |
+| `region` | `Cuboid`, `RegionIndex` (chunk-bucketed position lookup), `RegionTracker` (enter/exit detection per player), `SelectionManager` and `SelectionWand` for two-corner selections. |
+| `block` | `SafeBlocks`, fills that only replace empty space and clears that only remove what was placed, plus `wouldOverwrite` for vetoing vanilla placements. |
+| `display` | `TintPanel`, a translucent panel in any ARGB colour built from text displays, and `ArgbColours` for parsing `#RRGGBB`, `#AARRGGBB` and dye names. |
+| `http` | `ApiClient`, an async JSON client that never throws, with `ConnectionHealth` and a bounded `RetryQueue` for delivery that survives an outage. `Request` / `RequestBuilder` / `Response` are a blocking request builder, API-compatible with ModularEnigma Requests. |
+| `vanish` | `VanishStatus`, plugin-agnostic vanish detection via player metadata. `vanish.proxy.ProxyVanishStatus` is the Velocity side (PremiumVanish). |
 | `time` | `Durations`, player-facing duration formatting in three shapes: `clock` (`12:34`, `1:02:33`), `human` and `compact`. |
 | *(root)* | `ItemBuilder` for quick `ItemStack`s and `ConfigValidator` for checking config values on startup. |
 
@@ -356,6 +365,60 @@ new ProxyMessageRelay(proxy, logger, "example:sync").register(this);
 The bus stamps every outgoing message with the sending server's id and ignores messages carrying
 its own, so a change never bounces back to the server that made it.
 
+### Request/response over plugin messaging
+
+`PendingRequests` gives a one-way transport replies. Put the request id in your message, send it,
+and complete the id when the answer arrives. Unanswered requests fail with a timeout.
+
+```java
+PendingRequests<BridgeMessage> pending = new PendingRequests<>(Duration.ofMillis(1500));
+
+CompletableFuture<BridgeMessage> reply = pending.send(id ->
+        player.sendPluginMessage(plugin, "example:bridge", codec.encode(new ServerListRequest(id))));
+
+// PluginMessageListener
+BridgeMessage message = codec.decode(bytes);
+pending.complete(message.requestId(), message);
+```
+
+### Regions
+
+```java
+RegionIndex<Arena> arenas = new RegionIndex<>(Arena::bounds);
+arenas.rebuild(arenaService.all());
+RegionTracker<Arena> tracker = new RegionTracker<>(arenas, Arena::id);
+
+// PlayerMoveEvent, on block change
+tracker.update(player.getUniqueId(), world, x, y, z).entered().ifPresent(arena -> arena.join(player));
+```
+
+Rebuild the index whenever the set of regions changes, and clear the tracker on quit.
+
+### Migrating from ModularEnigma Requests
+
+`Request`, `RequestBuilder` and `Response` are ported from
+[ModularSoftAU/Requests](https://github.com/ModularSoftAU/Requests) with the same API. Drop the
+`io.github.ModularEnigma:Requests` dependency and change the imports:
+
+```java
+import dev.anchorlight.stonelib.http.Request;   // was io.github.ModularEnigma.Request
+import dev.anchorlight.stonelib.http.Response;  // was io.github.ModularEnigma.Response
+
+Response response = Request.builder()
+        .setURL(baseUrl + "/api/user/create")
+        .setMethod(Request.Method.POST)
+        .addHeader("x-access-token", token)
+        .setRequestBody(json)
+        .build()
+        .execute();
+```
+
+`execute()` blocks, so keep calling it off the main thread, or use `executeAsync()`. Changes from
+1.0.x: a POST without a body sends an empty body instead of throwing, headers you add replace the
+JSON `Accept`/`Content-Type` defaults instead of duplicating them, exceptions keep their cause, and
+`Method` gains `PUT`, `PATCH` and `DELETE`. If you shade StoneLib with an include filter, add
+`dev/anchorlight/stonelib/http/Re*` (or `http/**`).
+
 ## Migrating from 1.x
 
 2.0.0 contains breaking changes:
@@ -374,7 +437,7 @@ Paper 26.2 ships Java 25 class files, so an older JDK cannot read `paper-api` an
 mvn clean package
 ```
 
-This produces `target/StoneLib-2.0.0.jar` and a sources jar, and runs the test suite.
+This produces `target/StoneLib-2.1.0.jar` and a sources jar, and runs the test suite.
 
 - `paper-api` versions carry a `-stable` qualifier, so a Maven range like `[26.2.build,)` resolves
   to nothing. Pin an exact version.
