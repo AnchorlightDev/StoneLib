@@ -1,2 +1,3 @@
 jdk:
-  - openjdk21
+  # Paper 26.2 ships Java 25 class files; anything older cannot read paper-api.
+  - openjdk25

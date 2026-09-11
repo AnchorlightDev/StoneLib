@@ -1,4 +1,4 @@
-package org.modularsoft.StoneLib;
+package dev.anchorlight.stonelib;
 
 import java.util.function.Consumer;
 import net.kyori.adventure.text.TextComponent;
