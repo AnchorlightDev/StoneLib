@@ -15,6 +15,10 @@ import java.time.Duration;
  *       a cooldown message. Never renders as {@code "18:30"}, which reads as a clock time.</li>
  *   <li>{@link #compact} - {@code "2h 5m"}. For a sidebar or a status line, where space is tight
  *       and only the two most significant units matter.</li>
+ *   <li>{@link #full} - {@code "2h 5m 30s"}. For anywhere all three units are wanted at once,
+ *       including the seconds that {@link #compact} and {@link #human} drop once an hour is in
+ *       play. A countdown a player is timing a run against needs the seconds; a sidebar reading
+ *       "2h 5m" for sixty seconds looks frozen.</li>
  * </ul>
  */
 public final class Durations {
@@ -87,6 +91,38 @@ public final class Durations {
 
     public static String compact(long totalSeconds) {
         return compact(Duration.ofSeconds(Math.max(0, totalSeconds)));
+    }
+
+    /**
+     * All three units, largest first, skipping the leading ones that are zero:
+     * {@code "2h 5m 30s"}, {@code "5m 30s"}, {@code "30s"}.
+     *
+     * <p>The difference from {@link #compact} is the seconds. Compact deliberately shows only the
+     * two most significant units, so once a duration passes an hour the seconds disappear and the
+     * value changes once a minute - correct where space is tight, wrong anywhere somebody is
+     * watching it tick, where a display that sits still for sixty seconds reads as broken.
+     *
+     * <p>Interior zero units are kept: {@code "2h 0m 30s"} rather than {@code "2h 30s"}, so the
+     * shape of the string does not change from one second to the next as a unit empties. A
+     * countdown whose fields move around is hard to read at a glance.
+     */
+    public static String full(Duration duration) {
+        long total = safeSeconds(duration);
+        long hours = total / 3600;
+        long minutes = (total % 3600) / 60;
+        long seconds = total % 60;
+
+        if (hours > 0) {
+            return hours + "h " + minutes + "m " + seconds + "s";
+        }
+        if (minutes > 0) {
+            return minutes + "m " + seconds + "s";
+        }
+        return seconds + "s";
+    }
+
+    public static String full(long totalSeconds) {
+        return full(Duration.ofSeconds(Math.max(0, totalSeconds)));
     }
 
     /** Negative and null durations render as zero rather than as nonsense. */
