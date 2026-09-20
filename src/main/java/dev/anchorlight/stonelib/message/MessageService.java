@@ -24,12 +24,44 @@ public class MessageService {
     private final JavaPlugin plugin;
     private final String fileName;
     private final MiniMessage miniMessage = MiniMessage.miniMessage();
+    private final TagResolver[] extraResolvers;
     private File file;
     private FileConfiguration messages;
 
     public MessageService(JavaPlugin plugin, String fileName) {
+        this(plugin, fileName, new TagResolver[0]);
+    }
+
+    /**
+     * As {@link #MessageService(JavaPlugin, String)}, plus tag resolvers of this plugin's own that
+     * every message from this instance can use.
+     *
+     * <p>The usual reason is an item-sprite tag:
+     *
+     * <pre>{@code
+     * MessageService messages = new MessageService(this, "messages.yml",
+     *         Sprites.iconResolver(IconOptions.defaults()));
+     * }</pre>
+     *
+     * <pre>{@code
+     * # messages.yml
+     * tier-open: "<gold>Tier open - bring <amount>x <icon:'diamond_sword'>"
+     * }</pre>
+     *
+     * <p>Extras are held on this instance rather than registered on the shared {@code MiniMessage}
+     * instance, deliberately. Registering there would be global state - StoneLib has none by design
+     * - and would give the tag to every plugin in the JVM whether it opted in or not. A plugin that
+     * passes no extras is unaffected in every respect.
+     *
+     * <p>Named placeholders passed at the call site are resolved ahead of these, so a per-call
+     * value takes precedence over an extra resolver sharing its name.
+     *
+     * @param extra resolvers to make available to every template this instance parses
+     */
+    public MessageService(JavaPlugin plugin, String fileName, TagResolver... extra) {
         this.plugin = plugin;
         this.fileName = fileName;
+        this.extraResolvers = extra == null ? new TagResolver[0] : extra.clone();
         reload();
     }
 
@@ -71,6 +103,9 @@ public class MessageService {
             String tag = "stonelib_arg" + i;
             template = template.replace("{" + i + "}", "<" + tag + ">");
             resolvers.resolver(Placeholder.unparsed(tag, String.valueOf(placeholders[i])));
+        }
+        for (TagResolver extra : extraResolvers) {
+            resolvers.resolver(extra);
         }
 
         return miniMessage.deserialize(template, resolvers.build());
@@ -114,12 +149,30 @@ public class MessageService {
      * @see MiniMessages
      */
     public Component getNamed(String key, Object... keyValuePairs) {
-        return MiniMessages.parse(messages.getString("prefix", "") + raw(key), keyValuePairs);
+        return parseNamed(messages.getString("prefix", "") + raw(key), keyValuePairs);
     }
 
     /** As {@link #getNamed}, without the chat prefix - for titles, action bars and sidebars. */
     public Component getNamedUnprefixed(String key, Object... keyValuePairs) {
-        return MiniMessages.parse(raw(key), keyValuePairs);
+        return parseNamed(raw(key), keyValuePairs);
+    }
+
+    /**
+     * Parses a named-placeholder template with this instance's extra resolvers appended.
+     *
+     * <p>With no extras this is exactly {@link MiniMessages#parse}: the same stock
+     * {@code MiniMessage} instance and the same resolvers, so output is unchanged for every
+     * existing caller.
+     */
+    private Component parseNamed(String template, Object... keyValuePairs) {
+        if (extraResolvers.length == 0) {
+            return MiniMessages.parse(template, keyValuePairs);
+        }
+        TagResolver[] named = MiniMessages.resolvers(keyValuePairs);
+        TagResolver[] all = new TagResolver[named.length + extraResolvers.length];
+        System.arraycopy(named, 0, all, 0, named.length);
+        System.arraycopy(extraResolvers, 0, all, named.length, extraResolvers.length);
+        return miniMessage.deserialize(template == null ? "" : template, all);
     }
 
     /** Sends a named-placeholder message to any audience, including the whole server. */

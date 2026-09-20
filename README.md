@@ -25,6 +25,7 @@
 - [Quick start](#quick-start)
 - [Guides](#guides)
   - [Messages and placeholders](#messages-and-placeholders)
+  - [Item sprites in messages](#item-sprites-in-messages)
   - [Displaying untrusted text safely](#displaying-untrusted-text-safely)
   - [Versioned config migration](#versioned-config-migration)
   - [MySQL storage](#mysql-storage)
@@ -75,7 +76,7 @@ repository and dependency to your `pom.xml`:
     <dependency>
         <groupId>com.github.AnchorlightDev</groupId>
         <artifactId>StoneLib</artifactId>
-        <version>2.2.1</version>
+        <version>2.3.0</version>
     </dependency>
 </dependencies>
 ```
@@ -156,7 +157,7 @@ All packages live under `dev.anchorlight.stonelib`.
 | `world` | `Terrain`, heightmap-aware placement on generated terrain - surface and floor lookups that skip leaves, a `standable` test that rejects liquid, unstable footing and low headroom, and area-uniform sampling inside the world border. |
 | `sound` | `Sounds`, vanilla sound cues named from config, to a player, to everyone, at a point or within a radius. An unknown key is ignored rather than thrown. |
 | `command` | `SubCommand` and `CommandRouter` for sub-command dispatch, permissions and tab completion. |
-| `message` | `MessageService` (MiniMessage-backed `messages.yml` with positional and named placeholders), `MiniMessages`, `LegacyColorConverter` and `UntrustedText`. |
+| `message` | `MessageService` (MiniMessage-backed `messages.yml` with positional and named placeholders), `MiniMessages`, `Sprites` (item and block icons inline in text), `LegacyColorConverter` and `UntrustedText`. |
 | `config` | `ConfigManager` for a single `config.yml`, `MultiConfigManager` for several files, and `ConfigUpdater` for versioned migrations. |
 | `storage` | The `Repository` / `RecordCodec` contract with `YamlRepository`, `SqliteRepository` and `MySqlRepository` implementations, plus `LocationCodec`. |
 | `storage.sql` | `DatabaseConfig`, `ConnectionPool` (HikariCP) and `SchemaMigrator` for ordered, run-once migrations. |
@@ -292,6 +293,65 @@ messages.sendNamed(player, "payout", "player", name, "points", 12, "balance", ba
 
 `MiniMessages.parse(template, "key", value, ...)` and `MiniMessages.plain(...)` do the same
 substitution for strings that are not message keys at all: scoreboard lines, item names, log output.
+
+### Item sprites in messages
+
+A real inventory icon can sit inline in chat, a title, an action bar, a boss bar or a menu title.
+
+**If you know the item when you write the message, you need no StoneLib API at all.** MiniMessage's
+`<sprite>` and `<head>` tags are in the default tag set, and both `MessageService` and
+`MiniMessages` use a stock MiniMessage instance, so they already work everywhere:
+
+```yaml
+# messages.yml
+reward: "<green>You found <sprite:\"minecraft:items\":item/diamond_sword>!"
+```
+
+**If the item is only known at runtime, build the sprite in code** and pass it as a placeholder
+value. Named placeholders accept an already-built `Component`, so there is no new method to learn:
+
+```java
+messages.sendNamed(player, "reward", "icon", Sprites.of(drop.getType()));
+```
+
+| Call | Gives you |
+|---|---|
+| `Sprites.of(material)` | the item's sprite, cached |
+| `Sprites.of(stack)` | the same, from an `ItemStack`'s type |
+| `Sprites.of(atlas, sprite)` | any sprite at all, including your own resource pack's |
+| `Sprites.labelled(material)` | sprite, a space, then the item's name in the viewer's language |
+| `Sprites.auditPage(page, perPage)` | a page of every material, for checking sprites by eye |
+
+**For icons authored in YAML, opt in to the `<icon:>` tag.** It is not registered globally — that
+would be shared mutable state, and would hand the tag to every plugin in the JVM — so a plugin that
+wants it passes it to its own `MessageService`:
+
+```java
+MessageService messages = new MessageService(this, "messages.yml",
+        Sprites.iconResolver(IconOptions.defaults()));
+```
+
+```yaml
+tier-open: "<gold>Tier open — bring <amount>x <icon:'diamond_sword'>"
+```
+
+The argument is a material name, case-insensitive, with or without `minecraft:`. An unknown material
+never throws: it degrades to the item's name and logs once at `WARNING`.
+
+`IconOptions` is also the kill switch. `IconOptions.disabled()` makes every sprite fall back to the
+item's translated name, so if a client problem ever turns up mid-event you can turn icons off from
+your own plugin's config without a StoneLib release and without touching a call site.
+
+Two caveats worth knowing before you lean on this:
+
+- **Blocks are the weak case, and that is vanilla, not StoneLib.** A placeable block's inventory
+  icon is a rendered 3D model, not a flat sprite, so the blocks atlas can only give a single face.
+  `block/stone` looks right; `block/crafting_table` gives one face of it; `block/oak_stairs` does
+  not exist at all. Correct those with an entry in StoneLib's bundled `sprites.yml`.
+- **The server cannot check that a sprite exists.** The atlas is entirely client-side, so a wrong
+  key throws nothing and logs nothing — it renders as missing-texture checkerboard on the player's
+  screen. The only reliable check is looking at it, which is what `Sprites.auditPage` is for: wire
+  it behind a `SubCommand` in a consuming plugin and page through it in-game.
 
 ### Displaying untrusted text safely
 
@@ -476,7 +536,7 @@ about what the compiler must READ, and is independent of the Java 21 bytecode it
 mvn clean package
 ```
 
-This produces `target/StoneLib-2.2.1.jar` and a sources jar, and runs the test suite.
+This produces `target/StoneLib-2.3.0.jar` and a sources jar, and runs the test suite.
 
 - `paper-api` versions carry a `-stable` qualifier, so a Maven range like `[26.2.build,)` resolves
   to nothing. Pin an exact version.

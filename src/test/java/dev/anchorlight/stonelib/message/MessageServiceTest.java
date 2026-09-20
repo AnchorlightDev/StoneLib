@@ -83,4 +83,98 @@ class MessageServiceTest {
         String received = consoleSender.nextMessage();
         assertTrue(received.contains("Hello, Alex!"));
     }
+
+    // ------------------------------------------------- extra resolvers (2.3.0)
+
+    /**
+     * Writes a second messages file and returns a service over it, so the extra-resolver tests do
+     * not disturb the shared fixture.
+     */
+    private MessageService serviceWith(String body, net.kyori.adventure.text.minimessage.tag.resolver.TagResolver... extra)
+            throws IOException {
+        File f = new File(plugin.getDataFolder(), "icons.yml");
+        try (PrintWriter writer = new PrintWriter(f)) {
+            writer.println("prefix: '<gray>[Test] '");
+            writer.println(body);
+        }
+        return new MessageService(plugin, "icons.yml", extra);
+    }
+
+    @Test
+    void noExtraResolversLeavesOutputExactlyAsItWas() throws IOException {
+        // §9.6: the compatibility guarantee. A plugin that never passes extras must get byte-for-byte
+        // what it got before the overload existed, so the two constructors are compared directly on
+        // the same corpus of templates rather than against a hand-written expectation.
+        String corpus = String.join("\n",
+                "plain: 'nothing special'",
+                "coloured: '<green>hello <bold>there</bold>'",
+                "positional: 'you have {0} of {1}'",
+                "named: '<player> earned <points>'",
+                "sprite-tag: 'take <sprite:\"minecraft:items\":item/diamond_sword>'",
+                "empty: ''");
+
+        MessageService withoutExtras = serviceWith(corpus);
+        MessageService twoArgConstructor = serviceWith(corpus);
+
+        var gson = net.kyori.adventure.text.serializer.gson.GsonComponentSerializer.gson();
+        for (String key : new String[]{"plain", "coloured", "named", "sprite-tag", "empty"}) {
+            assertEquals(gson.serialize(twoArgConstructor.getNamed(key, "player", "Steve", "points", 12)),
+                    gson.serialize(withoutExtras.getNamed(key, "player", "Steve", "points", 12)),
+                    "getNamed differed for key: " + key);
+            assertEquals(gson.serialize(twoArgConstructor.getNamedUnprefixed(key)),
+                    gson.serialize(withoutExtras.getNamedUnprefixed(key)),
+                    "getNamedUnprefixed differed for key: " + key);
+        }
+        assertEquals(gson.serialize(twoArgConstructor.get("positional", 3, "gold")),
+                gson.serialize(withoutExtras.get("positional", 3, "gold")));
+    }
+
+    @Test
+    void anExtraResolverIsAvailableToNamedTemplates() throws IOException {
+        MessageService messages = serviceWith(
+                "tier: '<gold>bring <amount>x <icon:''diamond_sword''>'",
+                Sprites.iconResolver(IconOptions.defaults()));
+
+        var component = messages.getNamedUnprefixed("tier", "amount", 5);
+        String plain = PlainTextComponentSerializer.plainText().serialize(component);
+        assertTrue(plain.startsWith("bring 5x"), plain);
+        assertTrue(containsSprite(component), "expected the <icon:> tag to resolve: " + component);
+    }
+
+    @Test
+    void anExtraResolverIsAvailableToPositionalTemplatesToo() throws IOException {
+        MessageService messages = serviceWith(
+                "tier: 'bring {0}x <icon:''diamond_sword''>'",
+                Sprites.iconResolver(IconOptions.defaults()));
+
+        var component = messages.get("tier", 5);
+        assertTrue(containsSprite(component), "expected the <icon:> tag to resolve: " + component);
+    }
+
+    @Test
+    void anIconTagIsUnknownWithoutOptingIn() throws IOException {
+        // The tag must NOT leak to plugins that did not ask for it -- that is the whole reason it
+        // is not registered on the shared MiniMessage instance.
+        MessageService messages = serviceWith("tier: 'bring <icon:''diamond_sword''>'");
+        var component = messages.getNamedUnprefixed("tier");
+        assertTrue(!containsSprite(component),
+                "an opt-out plugin must not get the icon tag: " + component);
+    }
+
+    @Test
+    void aRuntimeSpriteCanBePassedAsAPlaceholderValue() throws IOException {
+        // The §3 dynamic path, end to end through MessageService with no extra resolvers at all.
+        MessageService messages = serviceWith("drop: 'you found <icon>'");
+        var component = messages.getNamedUnprefixed("drop", "icon",
+                Sprites.of(org.bukkit.Material.DIAMOND_SWORD));
+        assertTrue(containsSprite(component), "expected the sprite to survive: " + component);
+    }
+
+    private static boolean containsSprite(net.kyori.adventure.text.Component component) {
+        if (component instanceof net.kyori.adventure.text.ObjectComponent object
+                && object.contents() instanceof net.kyori.adventure.text.object.SpriteObjectContents) {
+            return true;
+        }
+        return component.children().stream().anyMatch(MessageServiceTest::containsSprite);
+    }
 }
