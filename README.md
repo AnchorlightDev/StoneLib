@@ -12,7 +12,7 @@
 <p align="center">
   <a href="https://jitpack.io/#AnchorlightDev/StoneLib"><img src="https://jitpack.io/v/AnchorlightDev/StoneLib.svg" alt="JitPack"></a>
   <img src="https://img.shields.io/badge/Paper-26.2-blue" alt="Paper 26.2">
-  <img src="https://img.shields.io/badge/Java-25-orange" alt="Java 25">
+  <img src="https://img.shields.io/badge/Java-21-orange" alt="Java 21">
 </p>
 
 ---
@@ -40,9 +40,20 @@
 | | Version |
 |---|---|
 | Server | Paper `26.2` |
-| Java | `25` |
+| Java to **run** | `21+` |
+| JDK to **build** | `25` |
 | LuckPerms *(optional, for `permission`)* | `5.4+` |
 | Velocity *(optional, for `messaging.proxy`)* | `3.4+` |
+
+Those two Java rows are different questions and both matter. StoneLib is compiled with
+`<release>21</release>`, so the classes it emits run on a Java 21 server. Building it needs JDK 25
+only because `paper-api` 26.2 is itself Java 25 and javac has to be able to *read* it.
+
+**Do not raise the release target.** StoneLib is shaded into its consumers, and shading copies
+class files verbatim rather than recompiling them - so a jar can only run on a JVM new enough for
+its newest bundled class. Emitting 25 here forces every downstream plugin onto a Java 25 server
+whatever they set for their own code, which shows up as an `UnsupportedClassVersionError` on first
+use of any StoneLib class.
 
 Each module is constructed directly. There is no framework, service locator or global state, so
 a plugin only pays for the modules it actually uses.
@@ -64,7 +75,7 @@ repository and dependency to your `pom.xml`:
     <dependency>
         <groupId>com.github.AnchorlightDev</groupId>
         <artifactId>StoneLib</artifactId>
-        <version>2.1.0</version>
+        <version>2.2.1</version>
     </dependency>
 </dependencies>
 ```
@@ -76,7 +87,25 @@ libraries it brings in. Two plugins bundling different versions then cannot coll
 <plugin>
     <groupId>org.apache.maven.plugins</groupId>
     <artifactId>maven-shade-plugin</artifactId>
-    <version>3.6.0</version>
+    <version>3.6.2</version>
+    <!--
+        Shade rewrites every class it packages to apply relocations, so it needs an ASM that
+        understands the bytecode it reads. If YOUR plugin compiles above Java 21, the ASM bundled
+        with the plugin may be too old and the build fails with
+        "Unsupported class file major version". Pin a newer one here if that happens.
+    -->
+    <dependencies>
+        <dependency>
+            <groupId>org.ow2.asm</groupId>
+            <artifactId>asm</artifactId>
+            <version>9.9.1</version>
+        </dependency>
+        <dependency>
+            <groupId>org.ow2.asm</groupId>
+            <artifactId>asm-commons</artifactId>
+            <version>9.9.1</version>
+        </dependency>
+    </dependencies>
     <executions>
         <execution>
             <phase>package</phase>
@@ -120,6 +149,12 @@ All packages live under `dev.anchorlight.stonelib`.
 
 | Package | What it gives you |
 |---|---|
+| `clock` | `EventClock`, a timed event reduced to two absolute timestamps: normalised progress `p`, a session-only simulation override for testing, and `intervalScale` for stretching content pacing across runs of different lengths. `EventWindow` parses the window out of config, including the `Date` that YAML produces for an unquoted timestamp. |
+| `scaling` | `Scaling` and `ScaledTarget` for community targets that scale with population, with clamps and a progress floor so a shrinking server can never invalidate work already done. `PopulationWindow` supplies the reference count as a trailing *peak*, so logging off does not shrink a shared goal. |
+| `shop` | `ShopCatalog` (categories and entries from config), `ShopView` (menus, pagination, click routing) and `ShopStock` (event-wide limited stock). The action vocabulary stays in your plugin: `ShopContext` supplies the currency, the conditions and the delivery. |
+| `yaml` | `YamlStore`, a flat file of plugin state with a schema-version guard and dirty tracking. Deliberately **not** `storage`: no driver behind it, so a plugin with no database can exclude `storage` from its jar and still keep its state. |
+| `world` | `Terrain`, heightmap-aware placement on generated terrain - surface and floor lookups that skip leaves, a `standable` test that rejects liquid, unstable footing and low headroom, and area-uniform sampling inside the world border. |
+| `sound` | `Sounds`, vanilla sound cues named from config, to a player, to everyone, at a point or within a radius. An unknown key is ignored rather than thrown. |
 | `command` | `SubCommand` and `CommandRouter` for sub-command dispatch, permissions and tab completion. |
 | `message` | `MessageService` (MiniMessage-backed `messages.yml` with positional and named placeholders), `MiniMessages`, `LegacyColorConverter` and `UntrustedText`. |
 | `config` | `ConfigManager` for a single `config.yml`, `MultiConfigManager` for several files, and `ConfigUpdater` for versioned migrations. |
@@ -137,11 +172,11 @@ All packages live under `dev.anchorlight.stonelib`.
 | `messaging.request` | `PendingRequests`, request/response correlation with timeouts for one-way transports such as plugin messages. No Bukkit types, so it works on a proxy too. |
 | `region` | `Cuboid`, `RegionIndex` (chunk-bucketed position lookup), `RegionTracker` (enter/exit detection per player), `SelectionManager` and `SelectionWand` for two-corner selections. |
 | `block` | `SafeBlocks`, fills that only replace empty space and clears that only remove what was placed, plus `wouldOverwrite` for vetoing vanilla placements. |
-| `display` | `TintPanel`, a translucent panel in any ARGB colour built from text displays, and `ArgbColours` for parsing `#RRGGBB`, `#AARRGGBB` and dye names. |
+| `display` | `TintPanel`, a translucent panel in any ARGB colour built from text displays, and `ArgbColours` for parsing `#RRGGBB`, `#AARRGGBB` and dye names. `Bars` renders text progress bars; `ProgressBars` manages named bossbars shown either to everyone or only within a radius, applying audience changes as a delta so a scoped bar does not flicker. |
 | `http` | `ApiClient`, an async JSON client that never throws, with `ConnectionHealth` and a bounded `RetryQueue` for delivery that survives an outage. `Request` / `RequestBuilder` / `Response` are a blocking request builder, API-compatible with ModularEnigma Requests. |
 | `vanish` | `VanishStatus`, plugin-agnostic vanish detection via player metadata. `vanish.proxy.ProxyVanishStatus` is the Velocity side (PremiumVanish). |
 | `time` | `Durations`, player-facing duration formatting in three shapes: `clock` (`12:34`, `1:02:33`), `human` and `compact`. |
-| *(root)* | `ItemBuilder` for quick `ItemStack`s and `ConfigValidator` for checking config values on startup. |
+| *(root)* | `ItemBuilder` for quick `ItemStack`s, including persistent-data tagging so a custom item is identified by a tag rather than by a renameable display name, and `ConfigValidator` for checking config values on startup. |
 
 ## Quick start
 
@@ -426,18 +461,22 @@ JSON `Accept`/`Content-Type` defaults instead of duplicating them, exceptions ke
 - **Package rename.** `dev.anchorlight.StoneLib.*` is now `dev.anchorlight.stonelib.*`. Update your
   imports and any shade relocation patterns.
 - **Coordinates.** The JitPack group is now `com.github.AnchorlightDev`.
-- **Platform.** StoneLib targets Paper 26.2 and requires Java 25.
+- **Platform.** StoneLib builds against Paper 26.2 but emits Java 21 bytecode, so it runs on any JVM from 21 up.
+  Build with JDK 25, ship for 21: consumers shade StoneLib, and shading copies class files verbatim, so a
+  25-targeted build would force every downstream plugin onto a Java 25 server regardless of that plugin's own
+  `<release>`. See `<release>21</release>` in `pom.xml`.
 
 ## Building from source
 
 Paper 26.2 ships Java 25 class files, so an older JDK cannot read `paper-api` and fails with
-`cannot access org.bukkit.*` on every import. Build with JDK 25 (`jitpack.yml` pins `openjdk25`):
+`cannot access org.bukkit.*` on every import. Build with JDK 25 (`jitpack.yml` pins `openjdk25`) — that is
+about what the compiler must READ, and is independent of the Java 21 bytecode it EMITS:
 
 ```shell
 mvn clean package
 ```
 
-This produces `target/StoneLib-2.1.0.jar` and a sources jar, and runs the test suite.
+This produces `target/StoneLib-2.2.1.jar` and a sources jar, and runs the test suite.
 
 - `paper-api` versions carry a `-stable` qualifier, so a Maven range like `[26.2.build,)` resolves
   to nothing. Pin an exact version.

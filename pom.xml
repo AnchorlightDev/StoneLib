@@ -6,7 +6,7 @@
 
     <groupId>dev.anchorlight</groupId>
     <artifactId>StoneLib</artifactId>
-    <version>2.1.0</version>
+    <version>2.2.1</version>
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -109,8 +109,36 @@
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>3.11.0</version>
                 <configuration>
-                    <source>25</source>
-                    <target>25</target>
+                    <!--
+                        Use release, not source/target.
+
+                        This library is shaded into consumers (zander-hub,
+                        zander-velocity, zander-addon, zander-auth), and shading
+                        copies class files verbatim, never recompiling them.
+                        A jar can therefore only run on a JVM new enough for its
+                        NEWEST bundled class, so building here for 25 forced
+                        every downstream plugin onto a Java 25 server no matter
+                        what <release> those plugins set for their own code.
+                        On a Java 21 proxy that surfaced as
+
+                            UnsupportedClassVersionError: ...stonelib/http/Request
+                            has been compiled by a more recent version of the
+                            Java Runtime (class file version 69.0)
+
+                        at first use of any StoneLib class.
+
+                        21 is the floor our servers run.  Building against
+                        paper-api 26.2 (itself Java 25) is still fine: javac
+                        reads newer class files happily and simply emits
+                        21-compatible bytecode.  jitpack.yml must stay on
+                        openjdk25 for exactly that reason: it needs a JDK new
+                        enough to READ paper-api, which is a separate question
+                        from what we EMIT.
+
+                        Raising this above 21 again silently breaks every
+                        downstream plugin on a Java 21 server.
+                    -->
+                    <release>21</release>
                 </configuration>
             </plugin>
             <!-- Generate source JAR for better IDE integration -->
