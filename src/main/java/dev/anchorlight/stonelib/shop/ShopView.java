@@ -262,7 +262,11 @@ public final class ShopView {
         if (entry == null) {
             return false;
         }
-        if (!entry.priced()) {
+        // The context's price, not the entry's: an overridden price(ShopEntry) is what the buyer
+        // was quoted in the menu, so it has to be what is checked and what is taken. Reading
+        // entry.price() here instead is a shop that bills a different number than it advertises.
+        int cost = context.price(entry);
+        if (cost < 0) {
             context.onOutcome(buyer, entry, ShopContext.Outcome.UNPRICED, null);
             return false;
         }
@@ -284,18 +288,18 @@ public final class ShopView {
             context.onOutcome(buyer, entry, ShopContext.Outcome.SOLD_OUT, null);
             return false;
         }
-        if (!context.trySpend(buyer, entry.price())) {
+        if (!context.trySpend(buyer, cost)) {
             context.onOutcome(buyer, entry, ShopContext.Outcome.CANNOT_AFFORD, null);
             return false;
         }
         // Taken after payment so that a sold-out race refunds rather than charging for nothing.
         if (!stock.tryTake(entry)) {
-            context.refund(buyer, entry.price());
+            context.refund(buyer, cost);
             context.onOutcome(buyer, entry, ShopContext.Outcome.SOLD_OUT, null);
             return false;
         }
         if (!context.deliver(buyer, entry)) {
-            context.refund(buyer, entry.price());
+            context.refund(buyer, cost);
             stock.restoreOne(entry);
             context.onOutcome(buyer, entry, ShopContext.Outcome.DELIVERY_FAILED, null);
             return false;

@@ -46,12 +46,19 @@ class ShopViewTest {
         boolean deliverSucceeds = true;
         String refusal;
         boolean visible = true;
+        /** A runtime price that overrides config, or null to use the entry's own. */
+        Integer overriddenPrice;
 
         final List<String> spent = new ArrayList<>();
         final List<String> refunded = new ArrayList<>();
         final List<String> delivered = new ArrayList<>();
         final List<Outcome> outcomes = new ArrayList<>();
         String lastDetail;
+
+        @Override
+        public int price(ShopEntry entry) {
+            return overriddenPrice == null ? entry.price() : overriddenPrice;
+        }
 
         @Override
         public int balance(Player player) {
@@ -298,5 +305,66 @@ class ShopViewTest {
 
         assertTrue(view.purchase(buyer, catalog.entry("iron")));
         assertEquals(960, context.balance);
+    }
+
+    // ------------------------------------------------- the runtime price hook
+
+    /**
+     * A price that moves at runtime - a sale, a scaling cost, an anti-stall valve - belongs to the
+     * plugin, but the engine has to bill it. When these two disagree the shop quotes one number
+     * and charges another, and the buyer is refused an item the menu said they could afford. That
+     * is precisely what happened downstream: an item discounted 400 -> 200, a buyer holding 309,
+     * and a refusal reading "costs 200. You have 309."
+     */
+    @Test
+    void anOverriddenPriceIsWhatGetsCharged() {
+        context.overriddenPrice = 200;
+
+        assertTrue(view.purchase(buyer, entry("shard", 400, ShopEntry.UNLIMITED, null)));
+
+        assertEquals(800, context.balance, "the quoted price is the price taken");
+        assertEquals(List.of("200"), context.spent);
+    }
+
+    @Test
+    void anOverriddenPriceIsWhatAffordabilityIsCheckedAgainst() {
+        context.overriddenPrice = 200;
+        context.balance = 309;
+
+        assertTrue(view.purchase(buyer, entry("shard", 400, ShopEntry.UNLIMITED, null)),
+                "309 must buy an item discounted to 200, whatever config says it costs");
+
+        assertEquals(109, context.balance);
+        assertEquals(ShopContext.Outcome.PURCHASED, context.lastOutcome());
+    }
+
+    @Test
+    void aFailedDeliveryRefundsTheOverriddenPriceNotTheConfigOne() {
+        context.overriddenPrice = 200;
+        context.deliverSucceeds = false;
+
+        assertFalse(view.purchase(buyer, entry("shard", 400, ShopEntry.UNLIMITED, null)));
+
+        assertEquals(1000, context.balance, "refunding the config price would mint currency");
+        assertEquals(List.of("200"), context.refunded);
+        assertEquals(ShopContext.Outcome.DELIVERY_FAILED, context.lastOutcome());
+    }
+
+    @Test
+    void anOverrideCanMakeAConfigPricedEntryUnbuyable() {
+        context.overriddenPrice = -1;
+
+        assertFalse(view.purchase(buyer, entry("seasonal", 40, ShopEntry.UNLIMITED, null)));
+
+        assertEquals(1000, context.balance);
+        assertEquals(ShopContext.Outcome.UNPRICED, context.lastOutcome());
+    }
+
+    @Test
+    void withoutAnOverrideTheConfigPriceStillRules() {
+        assertTrue(view.purchase(buyer, entry("iron", 40, ShopEntry.UNLIMITED, null)));
+
+        assertEquals(960, context.balance);
+        assertEquals(List.of("40"), context.spent);
     }
 }

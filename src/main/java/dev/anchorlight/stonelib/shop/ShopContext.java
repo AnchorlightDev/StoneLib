@@ -40,6 +40,27 @@ public interface ShopContext {
 
     // ------------------------------------------------------------- currency
 
+    /**
+     * What this entry costs right now.
+     *
+     * <p>Defaults to the number in config, which is what a fixed-price shop wants. Override it
+     * when a price moves at runtime - a sale, a scaling cost, a valve that discounts an item while
+     * some condition holds - and the engine will quote <em>and charge</em> this, rather than the
+     * configured price.
+     *
+     * <p>This is the only correct place for that. A plugin that computes a live price on its own
+     * side can make the menu and its own messages agree with each other and still disagree with
+     * the engine, which reads {@link ShopEntry#price()} for the actual charge. What the buyer is
+     * shown then has nothing to do with what they are billed, and the failure is silent: an item
+     * displayed at a price the buyer can afford is refused because the real charge was higher.
+     *
+     * <p>Return a negative number to mark the entry unbuyable, exactly as a negative config price
+     * does.
+     */
+    default int price(ShopEntry entry) {
+        return entry.price();
+    }
+
     /** The buyer's current balance, for display. */
     int balance(Player player);
 
@@ -108,10 +129,11 @@ public interface ShopContext {
      * @param remaining units left, or {@link Integer#MAX_VALUE} for an unlimited entry
      */
     default List<Component> entryLore(ShopEntry entry, Player viewer, int remaining) {
-        if (!entry.priced()) {
+        int cost = price(entry);
+        if (cost < 0) {
             return List.of(plain("Not for sale", NamedTextColor.DARK_GRAY));
         }
-        Component price = plain("Price: " + entry.price(), NamedTextColor.GOLD);
+        Component price = plain("Price: " + cost, NamedTextColor.GOLD);
         if (remaining == Integer.MAX_VALUE) {
             return List.of(price);
         }
