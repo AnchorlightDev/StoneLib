@@ -43,7 +43,7 @@ public final class RegionIndex<T> {
             Map<Long, List<T>> worldBuckets = next.computeIfAbsent(bounds.world(), key -> new HashMap<>());
             for (int chunkX = bounds.minChunkX(); chunkX <= bounds.maxChunkX(); chunkX++) {
                 for (int chunkZ = bounds.minChunkZ(); chunkZ <= bounds.maxChunkZ(); chunkZ++) {
-                    worldBuckets.computeIfAbsent(chunkKey(chunkX, chunkZ), key -> new ArrayList<>()).add(region);
+                    worldBuckets.computeIfAbsent(ChunkKey.of(chunkX, chunkZ), key -> new ArrayList<>()).add(region);
                 }
             }
         }
@@ -60,14 +60,14 @@ public final class RegionIndex<T> {
         if (worldBuckets == null) {
             return List.of();
         }
-        List<T> candidates = worldBuckets.get(chunkKey(chunkX, chunkZ));
+        List<T> candidates = worldBuckets.get(ChunkKey.of(chunkX, chunkZ));
         return candidates == null ? List.of() : Collections.unmodifiableList(candidates);
     }
 
     /** Every region containing the block, in insertion order. */
     public List<T> allAt(String world, int x, int y, int z) {
         List<T> result = new ArrayList<>();
-        for (T candidate : candidatesFor(world, x >> 4, z >> 4)) {
+        for (T candidate : candidatesFor(world, ChunkKey.chunkOf(x), ChunkKey.chunkOf(z))) {
             if (boundsOf.apply(candidate).contains(x, y, z)) {
                 result.add(candidate);
             }
@@ -77,15 +77,11 @@ public final class RegionIndex<T> {
 
     /** The first region (in insertion order) containing the block. */
     public Optional<T> find(String world, int x, int y, int z) {
-        for (T candidate : candidatesFor(world, x >> 4, z >> 4)) {
+        for (T candidate : candidatesFor(world, ChunkKey.chunkOf(x), ChunkKey.chunkOf(z))) {
             if (boundsOf.apply(candidate).contains(x, y, z)) {
                 return Optional.of(candidate);
             }
         }
         return Optional.empty();
-    }
-
-    private static long chunkKey(int chunkX, int chunkZ) {
-        return (((long) chunkX) << 32) ^ (chunkZ & 0xffffffffL);
     }
 }
