@@ -6,12 +6,14 @@ import dev.dejvokep.boostedyaml.settings.dumper.DumperSettings;
 import dev.dejvokep.boostedyaml.settings.general.GeneralSettings;
 import dev.dejvokep.boostedyaml.settings.loader.LoaderSettings;
 import dev.dejvokep.boostedyaml.settings.updater.UpdaterSettings;
+import org.bukkit.configuration.InvalidConfigurationException;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.file.Files;
@@ -124,7 +126,7 @@ public final class ConfigUpdater {
             // loads via a FileInputStream it never closes - which would leak a file handle per
             // config file per reload, in every plugin that uses this.
             YamlDocument document;
-            try (InputStream current = Files.newInputStream(target.toPath());
+            try (InputStream current = currentContent(plugin, fileName, target);
                  InputStream defaults = plugin.getResource(fileName)) {
                 document = YamlDocument.create(
                         current,
@@ -134,6 +136,12 @@ public final class ConfigUpdater {
                         DumperSettings.DEFAULT,
                         settings);
             }
+            // BoostedYAML writes the version it migrated to as a string ('2'), which Bukkit's getInt
+            // reads as 0. Keep it the plain number the bundled file uses.
+            Object version = document.get(VERSION_ROUTE);
+            if (version instanceof String text && text.matches("\\d{1,9}")) {
+                document.set(VERSION_ROUTE, Integer.parseInt(text));
+            }
             document.save(target);
             return document;
         } catch (IOException | RuntimeException ex) {
@@ -141,6 +149,35 @@ public final class ConfigUpdater {
                     String.format("Could not update '%s'; the server copy is left as it is", fileName), ex);
             return null;
         }
+    }
+
+    /** The first version of any versioned file, by convention. */
+    public static final String FIRST_VERSION = "1";
+
+    /**
+     * The server's file, with {@code config-version: 1} put in front when the bundled resource is
+     * versioned but the server's file is not.
+     *
+     * <p>A file with no version predates versioning, which makes it the oldest version there is.
+     * Without this BoostedYAML merges in the missing keys but never records a version for it, so
+     * every later relocation would skip that server's file for good.
+     */
+    static InputStream currentContent(JavaPlugin plugin, String fileName, File target) throws IOException {
+        String text = Files.readString(target.toPath(), StandardCharsets.UTF_8);
+        if (!resourceDeclaresVersion(plugin, fileName)) {
+            return new ByteArrayInputStream(text.getBytes(StandardCharsets.UTF_8));
+        }
+        YamlConfiguration server = new YamlConfiguration();
+        try {
+            server.loadFromString(text);
+        } catch (InvalidConfigurationException ex) {
+            // Let BoostedYAML report the syntax error with its own position information.
+            return new ByteArrayInputStream(text.getBytes(StandardCharsets.UTF_8));
+        }
+        if (server.get(VERSION_ROUTE) == null) {
+            text = VERSION_ROUTE + ": " + FIRST_VERSION + System.lineSeparator() + text;
+        }
+        return new ByteArrayInputStream(text.getBytes(StandardCharsets.UTF_8));
     }
 
     /**
