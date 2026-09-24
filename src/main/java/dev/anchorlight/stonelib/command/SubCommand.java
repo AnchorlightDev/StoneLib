@@ -29,6 +29,14 @@ public interface SubCommand {
     }
 
     /**
+     * True when only a player may run this. The router answers the console itself, through
+     * {@link CommandRouter.Feedback#playersOnly}, so {@link #execute} can cast the sender.
+     */
+    default boolean playerOnly() {
+        return false;
+    }
+
+    /**
      * Executes this sub-command. Arguments do NOT include the sub-command name itself.
      */
     void execute(CommandSender sender, String[] args);
