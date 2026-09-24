@@ -76,7 +76,7 @@ repository and dependency to your `pom.xml`:
     <dependency>
         <groupId>com.github.AnchorlightDev</groupId>
         <artifactId>StoneLib</artifactId>
-        <version>2.3.0</version>
+        <version>2.4.0</version>
     </dependency>
 </dependencies>
 ```
@@ -143,6 +143,7 @@ libraries it brings in. Two plugins bundling different versions then cannot coll
 | mysql-connector-j | provided | Supplied by the server at runtime |
 | LuckPerms API | provided | Only needed if you use `permission` |
 | velocity-api | provided, optional | Only needed on a Velocity proxy |
+| Floodgate API | provided, optional | Only used by `bedrock`, and only when Floodgate is installed |
 
 ## Modules
 
@@ -153,20 +154,25 @@ All packages live under `dev.anchorlight.stonelib`.
 | `clock` | `EventClock`, a timed event reduced to two absolute timestamps: normalised progress `p`, a session-only simulation override for testing, and `intervalScale` for stretching content pacing across runs of different lengths. `EventWindow` parses the window out of config, including the `Date` that YAML produces for an unquoted timestamp. |
 | `scaling` | `Scaling` and `ScaledTarget` for community targets that scale with population, with clamps and a progress floor so a shrinking server can never invalidate work already done. `PopulationWindow` supplies the reference count as a trailing *peak*, so logging off does not shrink a shared goal. |
 | `shop` | `ShopCatalog` (categories and entries from config), `ShopView` (menus, pagination, click routing) and `ShopStock` (event-wide limited stock). The action vocabulary stays in your plugin: `ShopContext` supplies the currency, the conditions and the delivery. |
-| `yaml` | `YamlStore`, a flat file of plugin state with a schema-version guard and dirty tracking. Deliberately **not** `storage`: no driver behind it, so a plugin with no database can exclude `storage` from its jar and still keep its state. |
+| `yaml` | `DebouncedFileWriter`, state files written off the server thread, coalesced into one write per burst, atomically, with a synchronous `flush()` for `onDisable`. `YamlStore`, a flat file of plugin state with a schema-version guard and dirty tracking. Deliberately **not** `storage`: no driver behind it, so a plugin with no database can exclude `storage` from its jar and still keep its state. |
 | `world` | `Terrain`, heightmap-aware placement on generated terrain - surface and floor lookups that skip leaves, a `standable` test that rejects liquid, unstable footing and low headroom, and area-uniform sampling inside the world border. |
 | `sound` | `Sounds`, vanilla sound cues named from config, to a player, to everyone, at a point or within a radius. An unknown key is ignored rather than thrown. |
-| `command` | `SubCommand` and `CommandRouter` for sub-command dispatch, permissions and tab completion. |
-| `message` | `MessageService` (MiniMessage-backed `messages.yml` with positional and named placeholders), `MiniMessages`, `Sprites` (item and block icons inline in text), `LegacyColorConverter` and `UntrustedText`. |
-| `config` | `ConfigManager` for a single `config.yml`, `MultiConfigManager` for several files, and `ConfigUpdater` for versioned migrations. |
+| `command` | `SubCommand` and `CommandRouter` for sub-command dispatch, permissions and tab completion. Replies (usage, unknown, no permission, players only) can come from config through `Feedback`, and `onNoArguments` handles the bare root command. |
+| `message` | `MessageService` (MiniMessage-backed `messages.yml`, or a section of another file, with positional, named and optionally `%name%` placeholders), `Buttons` (clickable run- and suggest-command buttons), `MiniMessages`, `Sprites` (item and block icons inline in text), `LegacyColorConverter` and `UntrustedText`. |
+| `config` | `VersionedConfig`, one versioned file that is **never overwritten when it fails to parse** and serves the bundled defaults until fixed, with comment-preserving writes. `ConfigManager` for a single `config.yml`, `MultiConfigManager` for several files, and `ConfigUpdater` for versioned migrations. |
 | `jar` | `JarHasher`, SHA-256 and SHA-512 digests of files on disk cached by (path, size, last-modified) so a repeated scan does not rehash what has not changed. For identifying which build of a plugin is actually installed, verifying a download against a published checksum, or noticing a jar that changed without its version being bumped. Pure JDK. |
 | `storage` | The `Repository` / `RecordCodec` contract with `YamlRepository`, `SqliteRepository` and `MySqlRepository` implementations, plus `LocationCodec`. |
 | `storage.sql` | `DatabaseConfig`, `ConnectionPool` (HikariCP) and `SchemaMigrator` for ordered, run-once migrations. |
-| `scheduler` | `SchedulerService`, a Bukkit scheduler wrapper that tracks its tasks so `cancelAll()` cleans up in `onDisable`. `supplyAsync` runs work off-thread and hands the result back on the main thread. |
+| `scheduler` | `PlatformScheduler`, scheduling that is correct on Paper **and Folia**: entity-bound work on the entity's scheduler (`runOn`, `entityLater`, `entityTimer`), block work on the owning region (`runAt`, `region`), server-wide work on the global scheduler and I/O on the async one. Tracks its tasks for `cancelAll()`. `SchedulerService`, a Bukkit scheduler wrapper that tracks its tasks so `cancelAll()` cleans up in `onDisable`. `supplyAsync` runs work off-thread and hands the result back on the main thread. |
 | `aggregation` | `WindowedCounter`, folding high-frequency events into a rolling window per key and reporting a summary only once the window crosses a threshold you supply. Named counters plus optional per-bucket tallies, so "400 blocks broken" becomes "400 blocks broken across 30 chunks". Bounded key count, per-key report interval, idle sweep and an injectable clock. No Bukkit types, so it works on a proxy and in plain unit tests. |
+| `combat` | `CombatTagService`, who is "in combat" and until when: extending re-tags, enter and leave listeners (expired vs cleared), a sweep for expiry, an injectable clock. No Bukkit types. |
+| `ownership` | `BlockOwnership` (who placed a block, keyed by world plus a packed `long`, with expiry and a true nearest-owner search), `ExpiringOwners` for entity-keyed ownership, and `BlockPositions` for packing coordinates the vanilla way. |
+| `invite` | `InviteRegistry`, player-to-player invitations (duels, party invites) that expire, one outgoing per sender, and a resend guard per pair so nobody can be flooded. |
+| `bedrock` | `BedrockForms`, native Geyser forms (two-button modal, button list, custom form) through Floodgate when it is installed, and a no-op otherwise. Callbacks arrive on the player's own thread. |
+| `update` | `UpdateChecker`, an async GitHub "latest release" check that never throws and follows repository redirects, and `Versions`, a tolerant version comparison (`v1.2` = `1.2.0`, `1.10` > `1.9`, pre-releases sort first). |
 | `cooldown` | `CooldownService`, in-memory per-player cooldowns with an optional bypass permission and a check-and-apply `tryUse`. `RateLimiter` is a Bukkit-free per-key minimum interval for guarding inbound requests. |
 | `menu` | `MenuHolder` and `MenuListener`, a typed `InventoryHolder` where every menu is read-only and routed to its own click handler. `SlotLayout` places entries at pinned slots and centres the rest. |
-| `dialog` | `FormDialog`, a builder over Paper's Dialog API (text fields, sliders, toggles, dropdowns), and `FormResponse`, which clamps and defaults instead of trusting the client. |
+| `dialog` | `FormDialog`, a builder over Paper's Dialog API for forms (text fields, sliders, toggles, dropdowns) and button prompts (confirmations, notices, choice menus), and `FormResponse`, which clamps and defaults instead of trusting the client. **Bedrock players automatically get the equivalent Floodgate form.** |
 | `hologram` | `HologramService`, holograms on native Paper `TextDisplay` entities with no plugin dependency. |
 | `render` | `RenderLoop`, one async loop drawing every registered `Renderable` with distance culling, instead of a task per player. |
 | `loot` | `LootTable`, weighted loot read from config (`material` / `min` / `max` / `weight` / `enchantments`) for crates, drops and rewards. |
@@ -374,6 +380,40 @@ unrecognised tag cannot slip through, and it strips the legacy `§` marker so ol
 obfuscation codes cannot be applied either. The escaping order matters (escaping `<` before an
 existing `\` is itself bypassable); see its Javadoc for details.
 
+### Dialogs for Java and Bedrock players
+
+`FormDialog` reaches Bedrock players without any extra code. When Floodgate is installed, `show`
+sends a Geyser player the native equivalent of the same definition, and the same handlers run with
+the same `Player` and `FormResponse`:
+
+| Java dialog | Bedrock form |
+|---|---|
+| `builder(...)` with inputs | a custom form with the same labels, text fields, toggles, sliders and dropdowns |
+| `prompt(...)` with two buttons | a two-button modal |
+| `prompt(...)` with any other number | a button list, with the `exit` button last |
+
+A Bedrock custom form has one submit button, so the form's cancel handler runs when the player
+closes it. `FormResponse.fromBedrock()` tells the two apart, and `raw()` is null for Bedrock.
+Pass `bedrock(BedrockForms.none())` to keep a particular dialog Java-only.
+
+```java
+FormDialog.prompt(plugin, Component.text("Delete mailbox?"))
+        .body(Component.text("This cannot be undone."))
+        .button(Component.text("Delete"), player -> mailbox.delete())
+        .button(Component.text("Keep"), player -> {})
+        .show(player);
+```
+
+Add `softdepend: [floodgate]` to your `plugin.yml` so Floodgate enables first.
+
+### Folia
+
+Use `PlatformScheduler` instead of `SchedulerService` in anything that should load on Folia, and
+declare `folia-supported: true`. It is built on Paper's regionised schedulers, which Paper also
+implements, so one code path serves both. Handlers that act on a *second* entity (the shooter of an
+arrow, a duel partner) should wrap that work in `scheduler.runOn(entity, ...)`. It runs
+immediately when the caller already owns the entity and hops to its thread otherwise.
+
 ### Versioned config migration
 
 `ConfigUpdater` brings a server's config file up to date with the copy bundled in the jar, then
@@ -405,6 +445,12 @@ versioning automatically when the bundled resource declares `config-version`.
 - **Reading vs writing.** The update runs through BoostedYAML, which preserves comments and key
   order. To write values back without losing comments, take the `YamlDocument` from
   `ConfigUpdater.document(...)` and save through that.
+- **Unversioned files count as version 1.** When the bundled resource has a `config-version` and the
+  server's file has none, the file is treated as version 1, so every relocation from 2 onward still
+  applies to it.
+- **Broken files are left alone.** Use `VersionedConfig` to get this guarantee end to end. A file
+  that does not parse is never written, the error is logged with its line and column, and the
+  bundled defaults are served until a reload finds it fixed.
 - `ConfigManager` and `MultiConfigManager` both update through `ConfigUpdater` on reload.
   `CopyResources.mirror` still works but is deprecated in favour of `ConfigUpdater`.
 
@@ -516,6 +562,25 @@ JSON `Accept`/`Content-Type` defaults instead of duplicating them, exceptions ke
 `Method` gains `PUT`, `PATCH` and `DELETE`. If you shade StoneLib with an include filter, add
 `dev/anchorlight/stonelib/http/Re*` (or `http/**`).
 
+## What's new in 2.4.0
+
+Everything here is additive; nothing breaks:
+
+- `scheduler.PlatformScheduler`: Folia-safe scheduling.
+- `config.VersionedConfig`: never overwrites a broken file, and `set` preserves comments.
+- `ConfigUpdater`: unversioned server files are migrated as version 1, and the migrated version is
+  written as a number rather than the string `'2'`.
+- New modules: `combat.CombatTagService`, `ownership.*`, `invite.InviteRegistry`,
+  `yaml.DebouncedFileWriter`, `update.*`, `bedrock.*` and `message.Buttons`.
+- `MessageService`:
+  - `MessageService(Supplier<ConfigurationSection>)` reads messages kept in a section of another file;
+  - `legacyPercentPlaceholders(true)` accepts `%name%` templates;
+  - `prefix()` and `prefixed(Component)` expose the chat prefix.
+- `CommandRouter`: `feedback(...)`, `onNoArguments(...)` and `visibleNames(...)`, plus
+  `SubCommand.playerOnly()`. Tab completion never returns null.
+- `FormDialog`: `prompt(...)` for button dialogs, and every `FormDialog` now sends Bedrock players a
+  native form automatically.
+
 ## Migrating from 1.x
 
 2.0.0 contains breaking changes:
@@ -538,7 +603,7 @@ about what the compiler must READ, and is independent of the Java 21 bytecode it
 mvn clean package
 ```
 
-This produces `target/StoneLib-2.3.0.jar` and a sources jar, and runs the test suite.
+This produces `target/StoneLib-2.4.0.jar` and a sources jar, and runs the test suite.
 
 - `paper-api` versions carry a `-stable` qualifier, so a Maven range like `[26.2.build,)` resolves
   to nothing. Pin an exact version.
