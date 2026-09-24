@@ -47,6 +47,12 @@ final class FloodgateBedrockForms implements BedrockForms {
     @Override
     public boolean sendModal(Player player, String title, String content, String first, String second,
                              Consumer<Boolean> onChoice) {
+        return sendModal(player, title, content, first, second, onChoice, null);
+    }
+
+    @Override
+    public boolean sendModal(Player player, String title, String content, String first, String second,
+                             Consumer<Boolean> onChoice, Runnable onClosed) {
         UUID id = player.getUniqueId();
         ModalForm form = ModalForm.builder()
                 .title(title)
@@ -54,6 +60,11 @@ final class FloodgateBedrockForms implements BedrockForms {
                 .button1(first)
                 .button2(second)
                 .validResultHandler(response -> deliver(id, () -> onChoice.accept(response.clickedFirst())))
+                .closedOrInvalidResultHandler(() -> {
+                    if (onClosed != null) {
+                        deliver(id, onClosed);
+                    }
+                })
                 .build();
         return api.sendForm(id, form);
     }
@@ -61,12 +72,21 @@ final class FloodgateBedrockForms implements BedrockForms {
     @Override
     public boolean sendButtons(Player player, String title, String content, List<String> buttons,
                                IntConsumer onChoice) {
+        return sendButtons(player, title, content, buttons, onChoice, null);
+    }
+
+    @Override
+    public boolean sendButtons(Player player, String title, String content, List<String> buttons,
+                               IntConsumer onChoice, Runnable onClosed) {
         UUID id = player.getUniqueId();
         SimpleForm.Builder builder = SimpleForm.builder().title(title).content(content);
         for (String button : buttons) {
             builder.button(button);
         }
         builder.validResultHandler(response -> deliver(id, () -> onChoice.accept(response.clickedButtonId())));
+        if (onClosed != null) {
+            builder.closedOrInvalidResultHandler(() -> deliver(id, onClosed));
+        }
         return api.sendForm(id, builder.build());
     }
 

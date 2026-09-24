@@ -461,17 +461,20 @@ public final class FormDialog {
                 all.add(exit);
             }
             String content = String.join("\n", body.stream().map(FormDialog::bedrockText).toList());
+            // Closing the form is Bedrock's Escape: run the exit button, as Java does.
+            Runnable closed = exit == null ? null : () -> guarded(plugin, player, () -> exit.handler().accept(player));
             if (all.size() == 2) {
                 return forms.sendModal(player, bedrockText(title), content,
                         bedrockText(all.get(0).label()), bedrockText(all.get(1).label()),
-                        first -> guarded(plugin, player, () -> all.get(first ? 0 : 1).handler().accept(player)));
+                        first -> guarded(plugin, player, () -> all.get(first ? 0 : 1).handler().accept(player)),
+                        closed);
             }
             List<String> labels = all.stream().map(choice -> bedrockText(choice.label())).toList();
             return forms.sendButtons(player, bedrockText(title), content, labels, index -> {
                 if (index >= 0 && index < all.size()) {
                     guarded(plugin, player, () -> all.get(index).handler().accept(player));
                 }
-            });
+            }, closed);
         }
     }
 }

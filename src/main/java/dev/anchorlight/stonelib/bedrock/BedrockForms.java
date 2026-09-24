@@ -66,6 +66,23 @@ public interface BedrockForms {
     boolean sendButtons(Player player, String title, String content, List<String> buttons, IntConsumer onChoice);
 
     /**
+     * As {@link #sendModal(Player, String, String, String, String, Consumer)}, plus a handler for the
+     * player closing the form without choosing - the Bedrock counterpart of pressing Escape.
+     *
+     * @param onClosed run on the player's thread when the form is closed, or null
+     */
+    default boolean sendModal(Player player, String title, String content, String first, String second,
+                              Consumer<Boolean> onChoice, Runnable onClosed) {
+        return sendModal(player, title, content, first, second, onChoice);
+    }
+
+    /** As {@link #sendButtons(Player, String, String, List, IntConsumer)}, plus a close handler. */
+    default boolean sendButtons(Player player, String title, String content, List<String> buttons,
+                                IntConsumer onChoice, Runnable onClosed) {
+        return sendButtons(player, title, content, buttons, onChoice);
+    }
+
+    /**
      * A form of labels, text inputs, toggles, sliders and dropdowns with a single submit - the
      * Bedrock counterpart of a Java dialog. {@code FormDialog} builds one of these automatically.
      *

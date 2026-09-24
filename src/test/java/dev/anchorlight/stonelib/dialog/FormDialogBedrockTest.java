@@ -44,6 +44,21 @@ class FormDialogBedrockTest {
         Consumer<Boolean> modal;
         IntConsumer buttons;
         List<String> buttonLabels;
+        Runnable promptClosed;
+
+        @Override
+        public boolean sendModal(Player p, String title, String content, String first, String second,
+                                 Consumer<Boolean> onChoice, Runnable onClosed) {
+            promptClosed = onClosed;
+            return sendModal(p, title, content, first, second, onChoice);
+        }
+
+        @Override
+        public boolean sendButtons(Player p, String title, String content, List<String> labels,
+                                   IntConsumer onChoice, Runnable onClosed) {
+            promptClosed = onClosed;
+            return sendButtons(p, title, content, labels, onChoice);
+        }
 
         @Override public boolean available() { return true; }
         @Override public boolean isBedrock(UUID player) { return true; }
@@ -103,6 +118,25 @@ class FormDialogBedrockTest {
         assertEquals(List.of("modal:Delete?:Yes/No"), forms.sent);
         forms.modal.accept(false);
         assertEquals(List.of("no"), clicked);
+    }
+
+    @Test
+    void closingABedrockPromptRunsTheExitHandlerLikeEscapeOnJava() {
+        List<String> clicked = new ArrayList<>();
+        FormDialog.prompt(plugin, Component.text("Pick"))
+                .button(Component.text("A"), p -> clicked.add("a"))
+                .button(Component.text("B"), p -> clicked.add("b"))
+                .exit(Component.text("Back"), p -> clicked.add("back"))
+                .bedrock(forms)
+                .show(player);
+        forms.promptClosed.run();
+        assertEquals(List.of("back"), clicked);
+
+        FormDialog.prompt(plugin, Component.text("Notice"))
+                .button(Component.text("OK"), p -> clicked.add("ok"))
+                .bedrock(forms)
+                .show(player);
+        assertEquals(null, forms.promptClosed, "no exit button, nothing to run on close");
     }
 
     @Test
