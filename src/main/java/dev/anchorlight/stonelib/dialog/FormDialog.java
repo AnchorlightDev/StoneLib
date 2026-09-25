@@ -21,6 +21,7 @@ import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -156,6 +157,13 @@ public final class FormDialog {
         }
     }
 
+    /**
+     * How long a Java dialog's buttons stay clickable. Paper keeps every registered callback, and
+     * whatever it captured, until it is used or expires; the unclicked buttons of a dialog never are,
+     * so the default 12 hours would hold them long after the dialog was closed.
+     */
+    private static final Duration CALLBACK_LIFETIME = Duration.ofMinutes(30);
+
     private static ActionButton javaButton(Plugin plugin, Component label, JavaCallback handler) {
         DialogActionCallback callback = (response, audience) -> {
             if (!(audience instanceof Player viewer)) {
@@ -163,7 +171,7 @@ public final class FormDialog {
             }
             guarded(plugin, viewer, () -> handler.accept(response, viewer));
         };
-        DialogAction action = DialogAction.customClick(callback, ClickCallback.Options.builder().build());
+        DialogAction action = DialogAction.customClick(callback, ClickCallback.Options.builder().lifetime(CALLBACK_LIFETIME).build());
         return ActionButton.builder(label).action(action).build();
     }
 
