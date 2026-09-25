@@ -1,0 +1,206 @@
+# Anchorlight build and release workflow.
+#
+# Master copy: AnchorlightDev/Harbour templates/build.yml
+# Copy it to .github/workflows/build.yml in each plugin repo and edit only the env block.
+# The file must be named build.yml: nightly.link URLs include the workflow file name.
+#
+#   push to the default branch  -> build, publish a nightly pre-release v<next-minor>-nightly.<run>
+#   push a vX.Y.Z tag           -> build at the tag, publish a stable release
+#   push a vX.Y.Z-beta.N tag    -> build at the tag, publish a beta pre-release
+#   pull request                -> build and test only
+#
+# Every release carries <artifact>-<version>.jar, <artifact>-<version>.jar.sha256 and bom.json.
+# Harbour reads these; nightly.link is only a convenience download.
+
+name: Build
+
+on:
+  push:
+    branches: [master, main]
+    tags: ['v*', '!v*-nightly.*']
+  pull_request:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  # Only cancel PR builds. Cancelling a release halfway through can leave a release with no assets.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # JDK that runs Maven. It must be able to read paper-api class files (25 for Paper 26.x).
+  # The bytecode level is maven.compiler.release / <release> in the pom, not this.
+  JAVA_VERSION: '25'
+  # Name prefix for the jar, release assets and the nightly upload. Empty means the repo name.
+  ARTIFACT: ''
+  # Built jar, relative to the repo root. {artifact} and {version} are substituted.
+  JAR_PATH: 'target/{artifact}-{version}.jar'
+  # Nightly pre-releases older than this are deleted. The newest 5 are always kept.
+  NIGHTLY_RETENTION_DAYS: '60'
+
+jobs:
+  build:
+    name: Build${{ github.event_name != 'pull_request' && ' and release' || '' }}
+    runs-on: ubuntu-latest
+    outputs:
+      channel: ${{ steps.plan.outputs.channel }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # tags are needed to work out the nightly version
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
+
+      - name: Work out channel and version
+        id: plan
+        env:
+          REPO_NAME: ${{ github.event.repository.name }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          artifact="${ARTIFACT:-$REPO_NAME}"
+          mode=verify; channel=none; version=""
+
+          if [[ "$GITHUB_EVENT_NAME" == push && "$GITHUB_REF" == refs/tags/v* ]]; then
+            tag="$GITHUB_REF_NAME"
+            if   [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]];                   then channel=stable
+            elif [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-beta\.[1-9][0-9]*$ ]]; then channel=beta
+            else echo "::error::Tag $tag is not vX.Y.Z or vX.Y.Z-beta.N"; exit 1
+            fi
+            mode=release; version="${tag#v}"
+
+          elif [[ "$GITHUB_EVENT_NAME" == push && "$GITHUB_REF" == "refs/heads/$DEFAULT_BRANCH" ]]; then
+            # Nightly = <next minor after the latest stable tag>-nightly.<run number>.
+            # With no stable tag yet, the pom version is the first release, so use it as is.
+            # If a beta for a higher version exists (say v3.0.0-beta.1), nightlies follow it.
+            latest_stable=$(git tag -l 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n1 || true)
+            if [[ -n "$latest_stable" ]]; then
+              IFS=. read -r major minor _ <<< "${latest_stable#v}"
+              next="$major.$((minor + 1)).0"
+            else
+              next=$(mvn -q -B -ntp help:evaluate -Dexpression=project.version -DforceStdout)
+              next="${next%-SNAPSHOT}"
+            fi
+            beta_core=$(git tag -l 'v*-beta.*' | sed -nE 's/^v([0-9]+\.[0-9]+\.[0-9]+)-beta\.[0-9]+$/\1/p' | sort -V | tail -n1 || true)
+            if [[ -n "$beta_core" && "$(printf '%s\n%s\n' "$next" "$beta_core" | sort -V | tail -n1)" == "$beta_core" ]]; then
+              next="$beta_core"
+            fi
+            [[ "$next" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::Cannot derive a version from '$next'"; exit 1; }
+            mode=release; channel=nightly; version="$next-nightly.$GITHUB_RUN_NUMBER"
+          fi
+
+          {
+            echo "mode=$mode"
+            echo "channel=$channel"
+            echo "version=$version"
+            echo "artifact=$artifact"
+            echo "tag=v$version"
+            echo "timestamp=$(git log -1 --format=%cI)"
+          } >> "$GITHUB_OUTPUT"
+          echo "::notice::$mode / $channel / ${version:-no version} at ${GITHUB_SHA::7}"
+
+      # The version is stamped by CI, so tagging a commit never needs a version-bump commit.
+      # Resource filtering then writes it into plugin.yml.
+      - name: Stamp version
+        if: steps.plan.outputs.mode == 'release'
+        run: >
+          mvn -B -ntp org.codehaus.mojo:versions-maven-plugin:2.22.0:set
+          -DnewVersion="${{ steps.plan.outputs.version }}"
+          -DgenerateBackupPoms=false -DprocessAllModules
+
+      - name: Build and test
+        run: >
+          mvn -B -ntp verify
+          -Dproject.build.outputTimestamp="${{ steps.plan.outputs.timestamp }}"
+
+      # Surefire writes the actual assertion failures here; the step log alone rarely says enough.
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports
+          path: '**/target/surefire-reports/**'
+          retention-days: 7
+
+      - name: Collect release assets
+        if: steps.plan.outputs.mode == 'release'
+        id: assets
+        env:
+          NAME: ${{ steps.plan.outputs.artifact }}
+          VERSION: ${{ steps.plan.outputs.version }}
+        run: |
+          set -euo pipefail
+          jar="${JAR_PATH//\{artifact\}/$NAME}"; jar="${jar//\{version\}/$VERSION}"
+          [[ -f "$jar" ]] || { echo "::error::Jar not found at $jar (set JAR_PATH in the env block)"; exit 1; }
+          bom="$(dirname "$jar")/bom.json"
+          [[ -f "$bom" ]] || { echo "::error::$bom missing. Add the CycloneDX plugin from Harbour templates/pom-snippet.xml"; exit 1; }
+          file="$NAME-$VERSION.jar"
+          mkdir dist
+          cp "$jar" "dist/$file"
+          cp "$bom" dist/bom.json
+          (cd dist && sha256sum "$file" > "$file.sha256")
+          echo "jar=dist/$file" >> "$GITHUB_OUTPUT"
+
+      - name: Upload nightly for nightly.link
+        if: steps.plan.outputs.channel == 'nightly'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.plan.outputs.artifact }}-nightly
+          path: |
+            ${{ steps.assets.outputs.jar }}
+            ${{ steps.assets.outputs.jar }}.sha256
+          if-no-files-found: error
+
+      - name: Publish GitHub release
+        if: steps.plan.outputs.mode == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.plan.outputs.tag }}
+          CHANNEL: ${{ steps.plan.outputs.channel }}
+          NAME: ${{ steps.plan.outputs.artifact }}
+          VERSION: ${{ steps.plan.outputs.version }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            # A re-run of the same workflow run: replace the assets, keep the notes Harbour may have set.
+            gh release upload "$TAG" dist/* --clobber
+            exit 0
+          fi
+          case "$CHANNEL" in
+            # Creating the release creates the tag at this exact commit. Tags created with
+            # GITHUB_TOKEN do not trigger workflows, so this cannot loop back into a tag build.
+            nightly) args=(--target "$GITHUB_SHA" --prerelease
+                           --notes "Nightly build of \`$GITHUB_SHA\` on \`$GITHUB_REF_NAME\`.") ;;
+            beta)    args=(--verify-tag --prerelease --generate-notes) ;;
+            stable)  args=(--verify-tag --latest --generate-notes) ;;
+          esac
+          gh release create "$TAG" --title "$NAME $VERSION" "${args[@]}" dist/*
+
+  prune-nightlies:
+    name: Prune old nightlies
+    needs: build
+    if: needs.build.outputs.channel == 'nightly'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Delete nightly pre-releases past retention
+        run: |
+          set -euo pipefail
+          cutoff=$(date -u -d "-${NIGHTLY_RETENTION_DAYS} days" +%s)
+          # The regex only matches -nightly.N tags, so stable and beta releases can never be selected.
+          gh release list --limit 1000 --json tagName,createdAt \
+            --jq '.[] | select(.tagName | test("^v[0-9]+[.][0-9]+[.][0-9]+-nightly[.][0-9]+$")) | [.createdAt, .tagName] | @tsv' \
+          | sort -r | tail -n +6 \
+          | while IFS=$'\t' read -r created tag; do
+              if (( $(date -u -d "$created" +%s) < cutoff )); then
+                echo "Deleting $tag ($created)"
+                gh release delete "$tag" --cleanup-tag --yes
+              fi
+            done

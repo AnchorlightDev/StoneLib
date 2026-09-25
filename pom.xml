@@ -95,11 +95,24 @@
     </dependencies>
 
     <build>
-        <!-- Enable replacement of '${}' in plugin.yml with actual values -->
+        <!-- Only plugin descriptors are filtered (Harbour templates/pom-snippet.xml), so the
+             CI-stamped ${project.version} lands in plugin.yml and nothing else is touched. -->
         <resources>
             <resource>
                 <directory>src/main/resources</directory>
                 <filtering>true</filtering>
+                <includes>
+                    <include>plugin.yml</include>
+                    <include>paper-plugin.yml</include>
+                </includes>
+            </resource>
+            <resource>
+                <directory>src/main/resources</directory>
+                <filtering>false</filtering>
+                <excludes>
+                    <exclude>plugin.yml</exclude>
+                    <exclude>paper-plugin.yml</exclude>
+                </excludes>
             </resource>
         </resources>
         <plugins>
@@ -159,6 +172,30 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.2.5</version>
+            </plugin>
+            <!-- Writes target/bom.json on package: the resolved dependency tree Harbour uses for
+                 Moorings and OSV advisories. Provided scope is included so paper-api and other
+                 server-supplied APIs are tracked too. -->
+            <plugin>
+                <groupId>org.cyclonedx</groupId>
+                <artifactId>cyclonedx-maven-plugin</artifactId>
+                <version>2.9.3</version>
+                <executions>
+                    <execution>
+                        <id>sbom</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>makeBom</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <outputFormat>json</outputFormat>
+                    <outputName>bom</outputName>
+                    <includeProvidedScope>true</includeProvidedScope>
+                    <includeTestScope>false</includeTestScope>
+                    <includeSystemScope>false</includeSystemScope>
+                </configuration>
             </plugin>
         </plugins>
     </build>
