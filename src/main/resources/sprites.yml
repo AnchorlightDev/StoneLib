@@ -1,0 +1,31 @@
+# StoneLib sprite overrides - library data, not user config.
+#
+# Read-only from inside the StoneLib jar. This file is deliberately NOT copied into a plugin's
+# data folder: a stale per-server copy of it would be a bug, not a customisation.
+#
+# Format:
+#   MATERIAL: "<atlas>|<sprite>"   force a specific atlas and sprite key
+#   MATERIAL: "-"                  force the text fallback (the item's translated name)
+#
+# Anything absent falls through to the convention chain in Sprites.resolve:
+# blocks -> minecraft:blocks + block/<name>, items -> minecraft:items + item/<name>.
+#
+# ---------------------------------------------------------------------------------------------
+# ONLY ADD ENTRIES YOU HAVE SEEN RENDER CORRECTLY IN-GAME.
+#
+# The atlas is client-side. The server cannot check whether a sprite key exists, and a wrong key
+# fails silently -- black-and-magenta checkerboard on the player's screen, nothing in the log.
+# An unverified guess here is therefore WORSE than no entry at all: the convention chain would
+# have produced the same result without this file claiming to be authoritative.
+#
+# The way to populate this is Sprites.auditPage(page, perPage), wired behind a SubCommand in a
+# consuming plugin, read page by page with your own eyes. See README "Item sprites in messages".
+# ---------------------------------------------------------------------------------------------
+
+overrides: {}
+
+# Examples, left commented out because they have NOT been verified on this fleet:
+#
+#   CRAFTING_TABLE: "-"                       # 3D model; blocks atlas gives one face only
+#   OAK_STAIRS: "-"                           # block/oak_stairs does not exist -> checkerboard
+#   WHEAT: "minecraft:items|item/wheat"        # block-form name differs from the item sprite

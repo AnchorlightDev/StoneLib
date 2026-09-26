@@ -12,7 +12,7 @@
 <p align="center">
   <a href="https://jitpack.io/#AnchorlightDev/StoneLib"><img src="https://jitpack.io/v/AnchorlightDev/StoneLib.svg" alt="JitPack"></a>
   <img src="https://img.shields.io/badge/Paper-26.2-blue" alt="Paper 26.2">
-  <img src="https://img.shields.io/badge/Java-25-orange" alt="Java 25">
+  <img src="https://img.shields.io/badge/Java-21-orange" alt="Java 21">
 </p>
 
 ---
@@ -25,10 +25,14 @@
 - [Quick start](#quick-start)
 - [Guides](#guides)
   - [Messages and placeholders](#messages-and-placeholders)
+  - [Item sprites in messages](#item-sprites-in-messages)
   - [Displaying untrusted text safely](#displaying-untrusted-text-safely)
   - [Versioned config migration](#versioned-config-migration)
   - [MySQL storage](#mysql-storage)
   - [Cross-server messaging](#cross-server-messaging)
+  - [Request/response over plugin messaging](#requestresponse-over-plugin-messaging)
+  - [Regions](#regions)
+  - [Migrating from ModularEnigma Requests](#migrating-from-modularenigma-requests)
 - [Migrating from 1.x](#migrating-from-1x)
 - [Building from source](#building-from-source)
 
@@ -37,9 +41,20 @@
 | | Version |
 |---|---|
 | Server | Paper `26.2` |
-| Java | `25` |
+| Java to **run** | `21+` |
+| JDK to **build** | `25` |
 | LuckPerms *(optional, for `permission`)* | `5.4+` |
 | Velocity *(optional, for `messaging.proxy`)* | `3.4+` |
+
+Those two Java rows are different questions and both matter. StoneLib is compiled with
+`<release>21</release>`, so the classes it emits run on a Java 21 server. Building it needs JDK 25
+only because `paper-api` 26.2 is itself Java 25 and javac has to be able to *read* it.
+
+**Do not raise the release target.** StoneLib is shaded into its consumers, and shading copies
+class files verbatim rather than recompiling them - so a jar can only run on a JVM new enough for
+its newest bundled class. Emitting 25 here forces every downstream plugin onto a Java 25 server
+whatever they set for their own code, which shows up as an `UnsupportedClassVersionError` on first
+use of any StoneLib class.
 
 Each module is constructed directly. There is no framework, service locator or global state, so
 a plugin only pays for the modules it actually uses.
@@ -61,7 +76,7 @@ repository and dependency to your `pom.xml`:
     <dependency>
         <groupId>com.github.AnchorlightDev</groupId>
         <artifactId>StoneLib</artifactId>
-        <version>2.0.0</version>
+        <version>v2.1.0</version>
     </dependency>
 </dependencies>
 ```
@@ -73,7 +88,25 @@ libraries it brings in. Two plugins bundling different versions then cannot coll
 <plugin>
     <groupId>org.apache.maven.plugins</groupId>
     <artifactId>maven-shade-plugin</artifactId>
-    <version>3.6.0</version>
+    <version>3.6.2</version>
+    <!--
+        Shade rewrites every class it packages to apply relocations, so it needs an ASM that
+        understands the bytecode it reads. If YOUR plugin compiles above Java 21, the ASM bundled
+        with the plugin may be too old and the build fails with
+        "Unsupported class file major version". Pin a newer one here if that happens.
+    -->
+    <dependencies>
+        <dependency>
+            <groupId>org.ow2.asm</groupId>
+            <artifactId>asm</artifactId>
+            <version>9.9.1</version>
+        </dependency>
+        <dependency>
+            <groupId>org.ow2.asm</groupId>
+            <artifactId>asm-commons</artifactId>
+            <version>9.9.1</version>
+        </dependency>
+    </dependencies>
     <executions>
         <execution>
             <phase>package</phase>
@@ -117,22 +150,36 @@ All packages live under `dev.anchorlight.stonelib`.
 
 | Package | What it gives you |
 |---|---|
+| `clock` | `EventClock`, a timed event reduced to two absolute timestamps: normalised progress `p`, a session-only simulation override for testing, and `intervalScale` for stretching content pacing across runs of different lengths. `EventWindow` parses the window out of config, including the `Date` that YAML produces for an unquoted timestamp. |
+| `scaling` | `Scaling` and `ScaledTarget` for community targets that scale with population, with clamps and a progress floor so a shrinking server can never invalidate work already done. `PopulationWindow` supplies the reference count as a trailing *peak*, so logging off does not shrink a shared goal. |
+| `shop` | `ShopCatalog` (categories and entries from config), `ShopView` (menus, pagination, click routing) and `ShopStock` (event-wide limited stock). The action vocabulary stays in your plugin: `ShopContext` supplies the currency, the conditions and the delivery. |
+| `yaml` | `YamlStore`, a flat file of plugin state with a schema-version guard and dirty tracking. Deliberately **not** `storage`: no driver behind it, so a plugin with no database can exclude `storage` from its jar and still keep its state. |
+| `world` | `Terrain`, heightmap-aware placement on generated terrain - surface and floor lookups that skip leaves, a `standable` test that rejects liquid, unstable footing and low headroom, and area-uniform sampling inside the world border. |
+| `sound` | `Sounds`, vanilla sound cues named from config, to a player, to everyone, at a point or within a radius. An unknown key is ignored rather than thrown. |
 | `command` | `SubCommand` and `CommandRouter` for sub-command dispatch, permissions and tab completion. |
-| `message` | `MessageService` (MiniMessage-backed `messages.yml` with positional and named placeholders), `MiniMessages`, `LegacyColorConverter` and `UntrustedText`. |
+| `message` | `MessageService` (MiniMessage-backed `messages.yml` with positional and named placeholders), `MiniMessages`, `Sprites` (item and block icons inline in text), `LegacyColorConverter` and `UntrustedText`. |
 | `config` | `ConfigManager` for a single `config.yml`, `MultiConfigManager` for several files, and `ConfigUpdater` for versioned migrations. |
+| `jar` | `JarHasher`, SHA-256 and SHA-512 digests of files on disk cached by (path, size, last-modified) so a repeated scan does not rehash what has not changed. For identifying which build of a plugin is actually installed, verifying a download against a published checksum, or noticing a jar that changed without its version being bumped. Pure JDK. |
 | `storage` | The `Repository` / `RecordCodec` contract with `YamlRepository`, `SqliteRepository` and `MySqlRepository` implementations, plus `LocationCodec`. |
 | `storage.sql` | `DatabaseConfig`, `ConnectionPool` (HikariCP) and `SchemaMigrator` for ordered, run-once migrations. |
 | `scheduler` | `SchedulerService`, a Bukkit scheduler wrapper that tracks its tasks so `cancelAll()` cleans up in `onDisable`. `supplyAsync` runs work off-thread and hands the result back on the main thread. |
-| `cooldown` | `CooldownService`, in-memory per-player cooldowns with an optional bypass permission and a check-and-apply `tryUse`. |
-| `menu` | `MenuHolder` and `MenuListener`, a typed `InventoryHolder` where every menu is read-only and routed to its own click handler. |
+| `aggregation` | `WindowedCounter`, folding high-frequency events into a rolling window per key and reporting a summary only once the window crosses a threshold you supply. Named counters plus optional per-bucket tallies, so "400 blocks broken" becomes "400 blocks broken across 30 chunks". Bounded key count, per-key report interval, idle sweep and an injectable clock. No Bukkit types, so it works on a proxy and in plain unit tests. |
+| `cooldown` | `CooldownService`, in-memory per-player cooldowns with an optional bypass permission and a check-and-apply `tryUse`. `RateLimiter` is a Bukkit-free per-key minimum interval for guarding inbound requests. |
+| `menu` | `MenuHolder` and `MenuListener`, a typed `InventoryHolder` where every menu is read-only and routed to its own click handler. `SlotLayout` places entries at pinned slots and centres the rest. |
 | `dialog` | `FormDialog`, a builder over Paper's Dialog API (text fields, sliders, toggles, dropdowns), and `FormResponse`, which clamps and defaults instead of trusting the client. |
 | `hologram` | `HologramService`, holograms on native Paper `TextDisplay` entities with no plugin dependency. |
 | `render` | `RenderLoop`, one async loop drawing every registered `Renderable` with distance culling, instead of a task per player. |
 | `loot` | `LootTable`, weighted loot read from config (`material` / `min` / `max` / `weight` / `enchantments`) for crates, drops and rewards. |
 | `permission` | `PermissionService`, LuckPerms lookups with a join-time cache and self-expiring temporary grants. |
 | `messaging` | `MessageBus` and `Message`, a cross-server bus over plugin messaging. `messaging.proxy.ProxyMessageRelay` is the Velocity side. |
+| `messaging.request` | `PendingRequests`, request/response correlation with timeouts for one-way transports such as plugin messages. No Bukkit types, so it works on a proxy too. |
+| `region` | `Cuboid`, `RegionIndex` (chunk-bucketed position lookup), `RegionTracker` (enter/exit detection per player), `SelectionManager` and `SelectionWand` for two-corner selections. `ChunkKey` packs a chunk coordinate pair into one `long` map key and floors block coordinates into chunk coordinates - both of which are quietly wrong for negative coordinates if written by hand. |
+| `block` | `SafeBlocks`, fills that only replace empty space and clears that only remove what was placed, plus `wouldOverwrite` for vetoing vanilla placements. |
+| `display` | `TintPanel`, a translucent panel in any ARGB colour built from text displays, and `ArgbColours` for parsing `#RRGGBB`, `#AARRGGBB` and dye names. `Bars` renders text progress bars; `ProgressBars` manages named bossbars shown either to everyone or only within a radius, applying audience changes as a delta so a scoped bar does not flicker. |
+| `http` | `ApiClient`, an async JSON client that never throws, with `ConnectionHealth` and a bounded `RetryQueue` for delivery that survives an outage. `Request` / `RequestBuilder` / `Response` are a blocking request builder, API-compatible with ModularEnigma Requests. |
+| `vanish` | `VanishStatus`, plugin-agnostic vanish detection via player metadata. `vanish.proxy.ProxyVanishStatus` is the Velocity side (PremiumVanish). |
 | `time` | `Durations`, player-facing duration formatting in three shapes: `clock` (`12:34`, `1:02:33`), `human` and `compact`. |
-| *(root)* | `ItemBuilder` for quick `ItemStack`s and `ConfigValidator` for checking config values on startup. |
+| *(root)* | `ItemBuilder` for quick `ItemStack`s, including persistent-data tagging so a custom item is identified by a tag rather than by a renameable display name, and `ConfigValidator` for checking config values on startup. |
 
 ## Quick start
 
@@ -249,6 +296,65 @@ messages.sendNamed(player, "payout", "player", name, "points", 12, "balance", ba
 `MiniMessages.parse(template, "key", value, ...)` and `MiniMessages.plain(...)` do the same
 substitution for strings that are not message keys at all: scoreboard lines, item names, log output.
 
+### Item sprites in messages
+
+A real inventory icon can sit inline in chat, a title, an action bar, a boss bar or a menu title.
+
+**If you know the item when you write the message, you need no StoneLib API at all.** MiniMessage's
+`<sprite>` and `<head>` tags are in the default tag set, and both `MessageService` and
+`MiniMessages` use a stock MiniMessage instance, so they already work everywhere:
+
+```yaml
+# messages.yml
+reward: "<green>You found <sprite:\"minecraft:items\":item/diamond_sword>!"
+```
+
+**If the item is only known at runtime, build the sprite in code** and pass it as a placeholder
+value. Named placeholders accept an already-built `Component`, so there is no new method to learn:
+
+```java
+messages.sendNamed(player, "reward", "icon", Sprites.of(drop.getType()));
+```
+
+| Call | Gives you |
+|---|---|
+| `Sprites.of(material)` | the item's sprite, cached |
+| `Sprites.of(stack)` | the same, from an `ItemStack`'s type |
+| `Sprites.of(atlas, sprite)` | any sprite at all, including your own resource pack's |
+| `Sprites.labelled(material)` | sprite, a space, then the item's name in the viewer's language |
+| `Sprites.auditPage(page, perPage)` | a page of every material, for checking sprites by eye |
+
+**For icons authored in YAML, opt in to the `<icon:>` tag.** It is not registered globally — that
+would be shared mutable state, and would hand the tag to every plugin in the JVM — so a plugin that
+wants it passes it to its own `MessageService`:
+
+```java
+MessageService messages = new MessageService(this, "messages.yml",
+        Sprites.iconResolver(IconOptions.defaults()));
+```
+
+```yaml
+tier-open: "<gold>Tier open — bring <amount>x <icon:'diamond_sword'>"
+```
+
+The argument is a material name, case-insensitive, with or without `minecraft:`. An unknown material
+never throws: it degrades to the item's name and logs once at `WARNING`.
+
+`IconOptions` is also the kill switch. `IconOptions.disabled()` makes every sprite fall back to the
+item's translated name, so if a client problem ever turns up mid-event you can turn icons off from
+your own plugin's config without a StoneLib release and without touching a call site.
+
+Two caveats worth knowing before you lean on this:
+
+- **Blocks are the weak case, and that is vanilla, not StoneLib.** A placeable block's inventory
+  icon is a rendered 3D model, not a flat sprite, so the blocks atlas can only give a single face.
+  `block/stone` looks right; `block/crafting_table` gives one face of it; `block/oak_stairs` does
+  not exist at all. Correct those with an entry in StoneLib's bundled `sprites.yml`.
+- **The server cannot check that a sprite exists.** The atlas is entirely client-side, so a wrong
+  key throws nothing and logs nothing — it renders as missing-texture checkerboard on the player's
+  screen. The only reliable check is looking at it, which is what `Sprites.auditPage` is for: wire
+  it behind a `SubCommand` in a consuming plugin and page through it in-game.
+
 ### Displaying untrusted text safely
 
 Both placeholder styles substitute values through MiniMessage's `Placeholder.unparsed(...)`, so a
@@ -356,6 +462,60 @@ new ProxyMessageRelay(proxy, logger, "example:sync").register(this);
 The bus stamps every outgoing message with the sending server's id and ignores messages carrying
 its own, so a change never bounces back to the server that made it.
 
+### Request/response over plugin messaging
+
+`PendingRequests` gives a one-way transport replies. Put the request id in your message, send it,
+and complete the id when the answer arrives. Unanswered requests fail with a timeout.
+
+```java
+PendingRequests<BridgeMessage> pending = new PendingRequests<>(Duration.ofMillis(1500));
+
+CompletableFuture<BridgeMessage> reply = pending.send(id ->
+        player.sendPluginMessage(plugin, "example:bridge", codec.encode(new ServerListRequest(id))));
+
+// PluginMessageListener
+BridgeMessage message = codec.decode(bytes);
+pending.complete(message.requestId(), message);
+```
+
+### Regions
+
+```java
+RegionIndex<Arena> arenas = new RegionIndex<>(Arena::bounds);
+arenas.rebuild(arenaService.all());
+RegionTracker<Arena> tracker = new RegionTracker<>(arenas, Arena::id);
+
+// PlayerMoveEvent, on block change
+tracker.update(player.getUniqueId(), world, x, y, z).entered().ifPresent(arena -> arena.join(player));
+```
+
+Rebuild the index whenever the set of regions changes, and clear the tracker on quit.
+
+### Migrating from ModularEnigma Requests
+
+`Request`, `RequestBuilder` and `Response` are ported from
+[ModularSoftAU/Requests](https://github.com/ModularSoftAU/Requests) with the same API. Drop the
+`io.github.ModularEnigma:Requests` dependency and change the imports:
+
+```java
+import dev.anchorlight.stonelib.http.Request;   // was io.github.ModularEnigma.Request
+import dev.anchorlight.stonelib.http.Response;  // was io.github.ModularEnigma.Response
+
+Response response = Request.builder()
+        .setURL(baseUrl + "/api/user/create")
+        .setMethod(Request.Method.POST)
+        .addHeader("x-access-token", token)
+        .setRequestBody(json)
+        .build()
+        .execute();
+```
+
+`execute()` blocks, so keep calling it off the main thread, or use `executeAsync()`. Changes from
+1.0.x: a POST without a body sends an empty body instead of throwing, headers you add replace the
+JSON `Accept`/`Content-Type` defaults instead of duplicating them, exceptions keep their cause, and
+`Method` gains `PUT`, `PATCH` and `DELETE`. If you shade StoneLib with an include filter, add
+`dev/anchorlight/stonelib/http/Re*` (or `http/**`).
+
 ## Migrating from 1.x
 
 2.0.0 contains breaking changes:
@@ -363,18 +523,22 @@ its own, so a change never bounces back to the server that made it.
 - **Package rename.** `dev.anchorlight.StoneLib.*` is now `dev.anchorlight.stonelib.*`. Update your
   imports and any shade relocation patterns.
 - **Coordinates.** The JitPack group is now `com.github.AnchorlightDev`.
-- **Platform.** StoneLib targets Paper 26.2 and requires Java 25.
+- **Platform.** StoneLib builds against Paper 26.2 but emits Java 21 bytecode, so it runs on any JVM from 21 up.
+  Build with JDK 25, ship for 21: consumers shade StoneLib, and shading copies class files verbatim, so a
+  25-targeted build would force every downstream plugin onto a Java 25 server regardless of that plugin's own
+  `<release>`. See `<release>21</release>` in `pom.xml`.
 
 ## Building from source
 
 Paper 26.2 ships Java 25 class files, so an older JDK cannot read `paper-api` and fails with
-`cannot access org.bukkit.*` on every import. Build with JDK 25 (`jitpack.yml` pins `openjdk25`):
+`cannot access org.bukkit.*` on every import. Build with JDK 25 (`jitpack.yml` pins `openjdk25`) — that is
+about what the compiler must READ, and is independent of the Java 21 bytecode it EMITS:
 
 ```shell
 mvn clean package
 ```
 
-This produces `target/StoneLib-2.0.0.jar` and a sources jar, and runs the test suite.
+This produces `target/StoneLib-2.3.0.jar` and a sources jar, and runs the test suite.
 
 - `paper-api` versions carry a `-stable` qualifier, so a Maven range like `[26.2.build,)` resolves
   to nothing. Pin an exact version.

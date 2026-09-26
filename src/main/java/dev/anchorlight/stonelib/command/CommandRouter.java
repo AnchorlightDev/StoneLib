@@ -50,8 +50,7 @@ public class CommandRouter {
             return true;
         }
 
-        String permission = sub.getPermission();
-        if (permission != null && !sender.hasPermission(permission)) {
+        if (!allowed(sender, sub)) {
             sender.sendMessage(ChatColor.RED + "You do not have permission to do that.");
             return true;
         }
@@ -62,9 +61,29 @@ public class CommandRouter {
         return true;
     }
 
+    /**
+     * Completions the sender is actually allowed to act on.
+     *
+     * <p>Filtered by permission, which {@link #dispatch} already enforces. Without this the router
+     * advertises every sub-command to everyone and only refuses on use - so a moderator holding
+     * one permission is shown the whole staff vocabulary, including the destructive entries they
+     * cannot run. Tab completion is a list of what you can do; it should not be a catalogue of
+     * what somebody else can.
+     */
+    /** Whether {@code sender} may use {@code sub}. A null permission means anyone may. */
+    private static boolean allowed(CommandSender sender, SubCommand sub) {
+        String permission = sub.getPermission();
+        return permission == null || sender.hasPermission(permission);
+    }
+
     public List<String> tabComplete(CommandSender sender, String[] args) {
         if (args.length <= 1) {
-            List<String> names = new ArrayList<>(subCommands.keySet());
+            List<String> names = new ArrayList<>();
+            for (Map.Entry<String, SubCommand> entry : subCommands.entrySet()) {
+                if (allowed(sender, entry.getValue())) {
+                    names.add(entry.getKey());
+                }
+            }
             if (args.length == 1) {
                 names.removeIf(name -> !name.startsWith(args[0].toLowerCase()));
             }
@@ -72,7 +91,9 @@ public class CommandRouter {
         }
 
         SubCommand sub = subCommands.get(args[0].toLowerCase());
-        if (sub == null) {
+        if (sub == null || !allowed(sender, sub)) {
+            // Same answer for "no such sub-command" and "not yours": completing the arguments of
+            // something they cannot run would confirm it exists.
             return Collections.emptyList();
         }
 
