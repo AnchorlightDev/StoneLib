@@ -76,7 +76,7 @@ repository and dependency to your `pom.xml`:
     <dependency>
         <groupId>com.github.AnchorlightDev</groupId>
         <artifactId>StoneLib</artifactId>
-        <version>2.3.0</version>
+        <version>v2.1.0</version>
     </dependency>
 </dependencies>
 ```
