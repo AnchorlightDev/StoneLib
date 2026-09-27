@@ -1,0 +1,5 @@
+# Bundled copy used by VersionedConfigTest.
+config-version: 2
+greeting: hello
+nested:
+  value: 5

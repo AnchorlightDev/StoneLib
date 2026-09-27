@@ -8,25 +8,31 @@ import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
 import net.kyori.adventure.title.Title;
 import org.bukkit.command.CommandSender;
-import org.bukkit.configuration.file.FileConfiguration;
+import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.File;
+import java.util.function.Supplier;
 
 /**
  * Loads a messages file and resolves keys through Adventure MiniMessage with
  * positional {0}, {1}, ... placeholder substitution.
+ *
+ * <p>Messages can also live in a section of a file the plugin already has, such as the
+ * {@code messages:} block of {@code config.yml}; see {@link #MessageService(Supplier, TagResolver...)}.
  */
 public class MessageService {
 
     private final JavaPlugin plugin;
     private final String fileName;
+    private final Supplier<? extends ConfigurationSection> source;
     private final MiniMessage miniMessage = MiniMessage.miniMessage();
     private final TagResolver[] extraResolvers;
     private File file;
-    private FileConfiguration messages;
+    private ConfigurationSection messages = new YamlConfiguration();
+    private boolean legacyPercentPlaceholders;
 
     public MessageService(JavaPlugin plugin, String fileName) {
         this(plugin, fileName, new TagResolver[0]);
@@ -61,16 +67,60 @@ public class MessageService {
     public MessageService(JavaPlugin plugin, String fileName, TagResolver... extra) {
         this.plugin = plugin;
         this.fileName = fileName;
+        this.source = null;
         this.extraResolvers = extra == null ? new TagResolver[0] : extra.clone();
         reload();
+    }
+
+    /**
+     * Messages read from a section the plugin already manages, instead of a file of their own.
+     *
+     * <p>The supplier is asked again on every {@link #reload()}, so it can hand back the section of
+     * a config that has itself just been reloaded:
+     *
+     * <pre>{@code
+     * VersionedConfig config = new VersionedConfig(this, "config.yml");
+     * MessageService messages = new MessageService(
+     *         () -> config.config().getConfigurationSection("messages"));
+     * }</pre>
+     *
+     * <p>The chat prefix is read from the {@code prefix} key inside that section. A null section
+     * behaves as an empty one, so every lookup reports a missing message rather than throwing.
+     */
+    public MessageService(Supplier<? extends ConfigurationSection> source, TagResolver... extra) {
+        this.plugin = null;
+        this.fileName = null;
+        this.source = source;
+        this.extraResolvers = extra == null ? new TagResolver[0] : extra.clone();
+        reload();
+    }
+
+    /**
+     * Also accept {@code %name%} for a named placeholder, as well as {@code <name>}.
+     *
+     * <p>For plugins whose existing, admin-edited templates predate named placeholders. Only the
+     * names actually passed at the call site are rewritten, so a literal percentage such as
+     * {@code "50% off"} is left alone. The rewrite is applied to the plugin-authored template; values
+     * are still substituted as inert text.
+     */
+    public MessageService legacyPercentPlaceholders(boolean enabled) {
+        this.legacyPercentPlaceholders = enabled;
+        return this;
     }
 
     /**
      * Reloads the messages file, bringing it up to date with the bundled resource first. Without
      * that, a plugin update that adds a message would read "[Missing message: ...]" on every server
      * that already had the old file, and a renamed key could never be migrated at all.
+     *
+     * <p>A section-backed service re-reads its supplier instead.
      */
     public void reload() {
+        if (source != null) {
+            ConfigurationSection section = source.get();
+            messages = section == null ? new YamlConfiguration() : section;
+            return;
+        }
         file = new File(plugin.getDataFolder(), fileName);
         messages = ConfigUpdater.update(plugin, fileName);
     }
@@ -149,7 +199,21 @@ public class MessageService {
      * @see MiniMessages
      */
     public Component getNamed(String key, Object... keyValuePairs) {
-        return parseNamed(messages.getString("prefix", "") + raw(key), keyValuePairs);
+        return parseNamed(prefix() + raw(key), keyValuePairs);
+    }
+
+    /** The chat prefix template, or empty when none is configured. */
+    public String prefix() {
+        return messages.getString("prefix", "");
+    }
+
+    /** {@code body} with the parsed chat prefix in front, for components built in code. */
+    public Component prefixed(Component body) {
+        String prefix = prefix();
+        if (prefix.isEmpty()) {
+            return body;
+        }
+        return parseNamed(prefix).append(body);
     }
 
     /** As {@link #getNamed}, without the chat prefix - for titles, action bars and sidebars. */
@@ -165,6 +229,9 @@ public class MessageService {
      * existing caller.
      */
     private Component parseNamed(String template, Object... keyValuePairs) {
+        if (legacyPercentPlaceholders && template != null) {
+            template = rewritePercentPlaceholders(template, keyValuePairs);
+        }
         if (extraResolvers.length == 0) {
             return MiniMessages.parse(template, keyValuePairs);
         }
@@ -173,6 +240,19 @@ public class MessageService {
         System.arraycopy(named, 0, all, 0, named.length);
         System.arraycopy(extraResolvers, 0, all, named.length, extraResolvers.length);
         return miniMessage.deserialize(template == null ? "" : template, all);
+    }
+
+    /** Rewrites {@code %name%} to {@code <name>} for each placeholder name supplied. */
+    static String rewritePercentPlaceholders(String template, Object... keyValuePairs) {
+        if (keyValuePairs == null) {
+            return template;
+        }
+        String out = template;
+        for (int i = 0; i + 1 < keyValuePairs.length; i += 2) {
+            String name = String.valueOf(keyValuePairs[i]);
+            out = out.replace("%" + name + "%", "<" + name + ">");
+        }
+        return out;
     }
 
     /** Sends a named-placeholder message to any audience, including the whole server. */
