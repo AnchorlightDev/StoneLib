@@ -9,3 +9,6 @@
 .factorypath
 .project
 .settings/
+
+# editor settings
+.vscode/

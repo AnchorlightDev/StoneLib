@@ -6,13 +6,15 @@ import java.time.Duration;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * In-memory cooldown tracker keyed by {@code UUID -> key -> expiry}.
  *
  * <p>The per-player key means one service can hold every cooldown a plugin has - an ability, a
  * command, a toggle - without a map per feature. Expired entries are dropped lazily when they are
- * next read, so there is nothing to schedule and nothing to clean up.
+ * next read, and every so often an apply sweeps out players whose cooldowns have all expired, so
+ * players who never come back do not accumulate. There is nothing to schedule and nothing to clean up.
  *
  * <p>Cooldowns are memory-only and deliberately do not survive a restart; persist them yourself if
  * your feature needs that.
@@ -29,7 +31,11 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class CooldownService {
 
+    /** Every this many applies, expired entries are swept from every player. */
+    private static final int SWEEP_INTERVAL = 256;
+
     private final Map<UUID, Map<String, Long>> cooldowns = new ConcurrentHashMap<>();
+    private final AtomicInteger appliesSinceSweep = new AtomicInteger();
     private final String bypassPermission;
 
     /** A service with no bypass permission: {@link #canBypass} is always false. */
@@ -77,8 +83,24 @@ public final class CooldownService {
         if (cooldownMillis <= 0) {
             return;
         }
+        if (appliesSinceSweep.incrementAndGet() >= SWEEP_INTERVAL) {
+            appliesSinceSweep.set(0);
+            sweepExpired();
+        }
         cooldowns.computeIfAbsent(uuid, ignored -> new ConcurrentHashMap<>())
                 .put(key, System.currentTimeMillis() + cooldownMillis);
+    }
+
+    /** Drops every expired cooldown, and every player left with none. */
+    public void sweepExpired() {
+        long now = System.currentTimeMillis();
+        cooldowns.values().forEach(keys -> keys.values().removeIf(expiry -> expiry <= now));
+        cooldowns.values().removeIf(Map::isEmpty);
+    }
+
+    /** How many players have an entry, expired or not. For tests. */
+    int trackedPlayers() {
+        return cooldowns.size();
     }
 
     public void clear(UUID uuid, String key) {
