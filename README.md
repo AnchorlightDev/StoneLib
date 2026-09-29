@@ -76,7 +76,7 @@ repository and dependency to your `pom.xml`:
     <dependency>
         <groupId>com.github.AnchorlightDev</groupId>
         <artifactId>StoneLib</artifactId>
-        <version>v2.4.0</version>
+        <version>v2.2.0</version>
     </dependency>
 </dependencies>
 ```
@@ -562,7 +562,7 @@ JSON `Accept`/`Content-Type` defaults instead of duplicating them, exceptions ke
 `Method` gains `PUT`, `PATCH` and `DELETE`. If you shade StoneLib with an include filter, add
 `dev/anchorlight/stonelib/http/Re*` (or `http/**`).
 
-## What's new in 2.4.0
+## What's new in 2.2.0
 
 Everything here is additive; nothing breaks:
 
@@ -580,6 +580,14 @@ Everything here is additive; nothing breaks:
   `SubCommand.playerOnly()`. Tab completion never returns null.
 - `FormDialog`: `prompt(...)` for button dialogs, and every `FormDialog` now sends Bedrock players a
   native form automatically.
+
+Fixes:
+
+- `SchedulerService` no longer keeps finished tasks until `cancelAll()`. One-shots untrack themselves
+  after running, so a busy server no longer grows toward `OutOfMemoryError`. `supplyAsync` skips its
+  callback if the plugin was disabled meanwhile.
+- `CooldownService` sweeps expired entries, so players who never return don't accumulate.
+- `FormDialog` callbacks expire after 30 minutes instead of Paper's 12-hour default.
 
 ## Migrating from 1.x
 
@@ -603,7 +611,7 @@ about what the compiler must READ, and is independent of the Java 21 bytecode it
 mvn clean package
 ```
 
-This produces `target/StoneLib-2.4.0.jar` and a sources jar, and runs the test suite.
+This produces `target/StoneLib-2.2.0.jar` and a sources jar, and runs the test suite.
 
 - `paper-api` versions carry a `-stable` qualifier, so a Maven range like `[26.2.build,)` resolves
   to nothing. Pin an exact version.
