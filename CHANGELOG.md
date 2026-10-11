@@ -4,6 +4,17 @@ All notable changes to StoneLib are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html), and the format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.3.1] - 2026-10-11
+
+Build/release fix only; no API or runtime changes from 2.3.0.
+
+### Fixed
+
+- JitPack builds failed because the `openjdk25` token resolves to an Oracle OpenJDK build that is
+  no longer downloadable from SDKMAN, and no Maven wrapper was present for JitPack to invoke.
+  `jitpack.yml` now installs Eclipse Temurin 25 via SDKMAN, and a Maven wrapper (`mvnw`) is
+  committed, so `com.github.AnchorlightDev:StoneLib` resolves from JitPack again.
+
 ## [2.3.0] - 2026-10-11
 
 Everything in this release is additive; nothing breaks. Code shared by PixelPost and Gracewave

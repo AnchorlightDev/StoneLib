@@ -1,3 +1,7 @@
-jdk:
-  # Paper 26.2 ships Java 25 class files; anything older cannot read paper-api.
-  - openjdk25
+# Paper 26.2 ships Java 25 class files, so building against paper-api needs a JDK 25 to *read*
+# them. JitPack's `openjdk25` token resolves to an Oracle OpenJDK build that Oracle has since
+# removed from SDKMAN (the download 404s and the build aborts), so we install an Eclipse Temurin
+# 25 instead - Temurin keeps its archived builds downloadable - and build with the Maven wrapper.
+install:
+  - sdk install java 25.0.3.0+9-tem < /dev/null
+  - sdk use java 25.0.3.0+9-tem && ./mvnw -B -ntp clean install -DskipTests
