@@ -688,7 +688,7 @@ about what the compiler must READ, and is independent of the Java 21 bytecode it
 mvn clean package
 ```
 
-This produces `target/StoneLib-2.2.0.jar` and a sources jar, and runs the test suite.
+This produces `target/StoneLib-2.3.0.jar` and a sources jar, and runs the test suite.
 
 - `paper-api` versions carry a `-stable` qualifier, so a Maven range like `[26.2.build,)` resolves
   to nothing. Pin an exact version.
