@@ -1,7 +1,9 @@
 # Paper 26.2 ships Java 25 class files, so building against paper-api needs a JDK 25 to *read*
-# them. JitPack's `openjdk25` token resolves to an Oracle OpenJDK build that Oracle has since
-# removed from SDKMAN (the download 404s and the build aborts), so we install an Eclipse Temurin
-# 25 instead - Temurin keeps its archived builds downloadable - and build with the Maven wrapper.
+# them. JitPack's own JDK provisioning cannot supply Java 25: its `openjdk25` token points at an
+# Oracle build Oracle has removed, and its bundled SDKMAN fails to download any Java 25 candidate.
+# So we fetch an Eclipse Temurin 25 tarball directly from Adoptium, point JAVA_HOME at it, and
+# build with the committed Maven wrapper. (Temurin emits Java 21 bytecode here per the pom's
+# <release>21</release>; the JDK 25 is only needed to read paper-api's Java 25 class files.)
 install:
-  - sdk install java 25.0.3.0+9-tem < /dev/null
-  - sdk use java 25.0.3.0+9-tem && ./mvnw -B -ntp clean install -DskipTests
+  - curl -fsSL -o /tmp/jdk25.tar.gz "https://api.adoptium.net/v3/binary/latest/25/ga/linux/x64/jdk/hotspot/normal/eclipse" && mkdir -p /tmp/jdk25 && tar -xzf /tmp/jdk25.tar.gz -C /tmp/jdk25 --strip-components=1
+  - export JAVA_HOME=/tmp/jdk25 && export PATH="$JAVA_HOME/bin:$PATH" && java -version && ./mvnw -B -ntp clean install -DskipTests
