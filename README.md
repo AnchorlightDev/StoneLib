@@ -32,6 +32,8 @@
   - [Cross-server messaging](#cross-server-messaging)
   - [Request/response over plugin messaging](#requestresponse-over-plugin-messaging)
   - [Regions](#regions)
+  - [Pictures on maps](#pictures-on-maps)
+  - [Animated displays](#animated-displays)
   - [Migrating from ModularEnigma Requests](#migrating-from-modularenigma-requests)
 - [Migrating from 1.x](#migrating-from-1x)
 - [Building from source](#building-from-source)
@@ -76,7 +78,7 @@ repository and dependency to your `pom.xml`:
     <dependency>
         <groupId>com.github.AnchorlightDev</groupId>
         <artifactId>StoneLib</artifactId>
-        <version>v2.2.0</version>
+        <version>v2.3.0</version>
     </dependency>
 </dependencies>
 ```
@@ -181,8 +183,11 @@ All packages live under `dev.anchorlight.stonelib`.
 | `messaging.request` | `PendingRequests`, request/response correlation with timeouts for one-way transports such as plugin messages. No Bukkit types, so it works on a proxy too. |
 | `region` | `Cuboid`, `RegionIndex` (chunk-bucketed position lookup), `RegionTracker` (enter/exit detection per player), `SelectionManager` and `SelectionWand` for two-corner selections. `ChunkKey` packs a chunk coordinate pair into one `long` map key and floors block coordinates into chunk coordinates - both of which are quietly wrong for negative coordinates if written by hand. |
 | `block` | `SafeBlocks`, fills that only replace empty space and clears that only remove what was placed, plus `wouldOverwrite` for vetoing vanilla placements. |
-| `display` | `TintPanel`, a translucent panel in any ARGB colour built from text displays, and `ArgbColours` for parsing `#RRGGBB`, `#AARRGGBB` and dye names. `Bars` renders text progress bars; `ProgressBars` manages named bossbars shown either to everyone or only within a radius, applying audience changes as a delta so a scoped bar does not flicker. |
-| `http` | `ApiClient`, an async JSON client that never throws, with `ConnectionHealth` and a bounded `RetryQueue` for delivery that survives an outage. `Request` / `RequestBuilder` / `Response` are a blocking request builder, API-compatible with ModularEnigma Requests. |
+| `display` | `TintPanel`, a translucent panel in any ARGB colour built from text displays, and `ArgbColours` for parsing `#RRGGBB`, `#AARRGGBB` and dye names. `Bars` renders text progress bars; `ProgressBars` manages named bossbars shown either to everyone or only within a radius, applying audience changes as a delta so a scoped bar does not flicker. `DisplayAnimator` grows block, item and text displays into view and shrinks them away with client-side interpolation, staggered if you like. `ActionBarChannel` keeps an action-bar line up for a set of players instead of letting it fade after three seconds. |
+| `map` | Images on maps. `ImageProcessor` fits a picture to a screen (cover, contain or stretch, with colour adjustments) and `TileSlicer` cuts it into 128x128 tiles; `MapImages` wraps both and adds PNG helpers and text cards. `RevisionMapRenderer` draws a tile and redraws only when its revision changes. `MapPool` keeps a screen's map ids stable across restarts through a `MapIdStore` you implement. `MapScreen` spawns the grid of item frames - on a wall or floating in mid-air - and swaps the maps they hold. |
+| `entity` | `EntityTags`, group, role and index tags in an entity's persistent data, so the displays and frames a plugin spawns can be found after a restart and orphans removed when what they belonged to is gone. |
+| `file` | `SafeFiles`: `resolveWithinRoot` refuses paths that escape a folder, `safeName` makes any string a boring file name, and atomic writes and moves. |
+| `http` | `ApiClient`, an async JSON client that never throws, with `ConnectionHealth` and a bounded `RetryQueue` for delivery that survives an outage. `Request` / `RequestBuilder` / `Response` are a blocking request builder, API-compatible with ModularEnigma Requests. `SafeDownloader` fetches third-party URLs with SSRF checks on every redirect hop, a streaming size cap and a content-type allow list; `UrlSafety` holds the checks. |
 | `vanish` | `VanishStatus`, plugin-agnostic vanish detection via player metadata. `vanish.proxy.ProxyVanishStatus` is the Velocity side (PremiumVanish). |
 | `time` | `Durations`, player-facing duration formatting in three shapes: `clock` (`12:34`, `1:02:33`), `human` and `compact`. |
 | *(root)* | `ItemBuilder` for quick `ItemStack`s, including persistent-data tagging so a custom item is identified by a tag rather than by a renameable display name, and `ConfigValidator` for checking config values on startup. |
@@ -537,6 +542,63 @@ tracker.update(player.getUniqueId(), world, x, y, z).entered().ifPresent(arena -
 
 Rebuild the index whenever the set of regions changes, and clear the tracker on quit.
 
+### Pictures on maps
+
+A screen is a grid of maps. The image work is plain `java.awt` and belongs off the main thread;
+minting map ids and spawning frames must happen on it.
+
+```java
+MapPool pool = new MapPool(store, () -> Bukkit.createMap(world).getId()); // store: your MapIdStore
+int[] ids = pool.mapIds("lobby", slide, 4, 3);                              // stable across restarts
+
+BufferedImage picture = ImageIO.read(file);                                  // or MapImages.decode(bytes)
+scheduler.supplyAsync(
+        () -> MapImages.screenTiles(picture, 4, 3, ImageFit.CONTAIN,
+                ImageProcessor.Adjustments.MAP_FRIENDLY, "#000000"),
+        tiles -> {
+            for (int i = 0; i < ids.length; i++) {
+                MapView view = Bukkit.getMap(ids[i]);
+                view.getRenderers().forEach(view::removeRenderer);
+                view.addRenderer(RevisionMapRenderer.fixed(tiles.get(i)));
+            }
+        });
+
+MapScreen screen = new MapScreen(new EntityTags(plugin, "screen"), "lobby",
+        MapScreen.facingViewer(targetBlock, player.getFacing(), 4, 3),
+        new MapScreen.Options(true, false, true, true));  // glowing, bordered, floating, saved
+screen.adopt();   // pick up frames from before a restart
+screen.spawn();   // spawn whatever is missing
+screen.show(ids); // switching slides is just show(otherSlideIds)
+```
+
+Give every slide its own slot in the pool. Clients cache map contents, so switching slides by
+handing the frames another slot's ids is instant, where redrawing the same maps is not.
+
+To download pictures from URLs other people control, use `http.SafeDownloader`: it refuses
+private and loopback addresses on every redirect hop, caps the size while streaming and only
+accepts the content types you list.
+
+### Animated displays
+
+`DisplayAnimator` animates with Paper's display interpolation, so the client does the tweening.
+Spawn collapsed, then appear; the animator waits the one tick the client needs to see a start state.
+
+```java
+DisplayAnimator animator = new DisplayAnimator(scheduler);
+Transformation full = new Transformation(new Vector3f(), new Quaternionf(), new Vector3f(1, 1, 0.1f), new Quaternionf());
+
+List<BlockDisplay> blocks = new ArrayList<>();
+for (Location cell : cells) {
+    blocks.add(world.spawn(cell, BlockDisplay.class, d -> {
+        d.setBlock(Material.QUARTZ_BLOCK.createBlockData());
+        d.setTransformation(DisplayAnimator.collapsed(full, DisplayAnimator.BLOCK_CENTRE));
+    }));
+}
+animator.appearAll(blocks, Collections.nCopies(blocks.size(), full), 10, 12); // 10-tick grow, starts spread over 12
+
+animator.disappearAll(blocks, DisplayAnimator.BLOCK_CENTRE, 8, 12, true);     // shrink, then remove
+```
+
 ### Migrating from ModularEnigma Requests
 
 `Request`, `RequestBuilder` and `Response` are ported from
@@ -561,6 +623,21 @@ Response response = Request.builder()
 JSON `Accept`/`Content-Type` defaults instead of duplicating them, exceptions keep their cause, and
 `Method` gains `PUT`, `PATCH` and `DELETE`. If you shade StoneLib with an include filter, add
 `dev/anchorlight/stonelib/http/Re*` (or `http/**`).
+
+## What's new in 2.3.0
+
+Everything here is additive; nothing breaks. Code shared by PixelPost and Gracewave moved here:
+
+- New `map` module: `ImageProcessor`, `ImageFit`, `TileSlicer`, `MapImages`, `RevisionMapRenderer`,
+  `MapPool` with `MapIdStore`, and `MapScreen` for wall-mounted or floating map screens.
+- New `entity.EntityTags` and `file.SafeFiles`.
+- `display.DisplayAnimator` (grow and shrink animations) and `display.ActionBarChannel` (an action
+  bar that does not fade).
+- `http.SafeDownloader` and `http.UrlSafety`. `UrlSafety` also blocks `0.0.0.0/8` and the
+  carrier-grade NAT range `100.64.0.0/10`, which PixelPost's copy allowed.
+
+If you shade StoneLib with an include filter, add the new packages you use (`map/**`,
+`entity/**`, `file/**`; `display/**` and `http/**` gained classes).
 
 ## What's new in 2.2.0
 
@@ -611,7 +688,7 @@ about what the compiler must READ, and is independent of the Java 21 bytecode it
 mvn clean package
 ```
 
-This produces `target/StoneLib-2.2.0.jar` and a sources jar, and runs the test suite.
+This produces `target/StoneLib-2.3.0.jar` and a sources jar, and runs the test suite.
 
 - `paper-api` versions carry a `-stable` qualifier, so a Maven range like `[26.2.build,)` resolves
   to nothing. Pin an exact version.
