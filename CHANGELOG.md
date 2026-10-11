@@ -4,16 +4,23 @@ All notable changes to StoneLib are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html), and the format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [2.3.1] - 2026-10-11
+## [2.3.2] - 2026-10-11
 
 Build/release fix only; no API or runtime changes from 2.3.0.
 
 ### Fixed
 
-- JitPack builds failed because the `openjdk25` token resolves to an Oracle OpenJDK build that is
-  no longer downloadable from SDKMAN, and no Maven wrapper was present for JitPack to invoke.
-  `jitpack.yml` now installs Eclipse Temurin 25 via SDKMAN, and a Maven wrapper (`mvnw`) is
-  committed, so `com.github.AnchorlightDev:StoneLib` resolves from JitPack again.
+- JitPack builds failed to produce a resolvable artifact. Two causes: no Maven wrapper existed for
+  JitPack to invoke (`./mvnw` → exit 127), and JitPack could not provision a Java 25 JDK (its
+  `openjdk25` token points at an Oracle build removed from SDKMAN, and its bundled SDKMAN cannot
+  download any Java 25 candidate). `jitpack.yml` now downloads an Eclipse Temurin 25 tarball
+  directly from Adoptium and builds with a committed Maven wrapper, so
+  `com.github.AnchorlightDev:StoneLib:v2.3.2` resolves from JitPack. Verified green on JitPack.
+
+## [2.3.1] - 2026-10-11
+
+Superseded by 2.3.2 — this tag's JitPack build does not resolve (JDK 25 provisioning fix was
+incomplete). Use 2.3.2.
 
 ## [2.3.0] - 2026-10-11
 
